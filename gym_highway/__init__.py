@@ -6,7 +6,5 @@ logger = logging.getLogger(__name__)
 register(
     id='Highway-v0',
     entry_point='gym_highway.envs:HighwayEnv',
-    timestep_limit=1000,
-    reward_threshold=1.0,
-    nondeterministic = True,
+    kwargs={'game': game, 'obs_type': obs_type, 'repeat_action_probability': 0.25},
 )
