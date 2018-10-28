@@ -6,6 +6,7 @@ import gym_highway
 from enum import Enum
 import pygame
 from pygame.math import Vector2
+import numpy as np
 
 
 class RandomAgent(object):
@@ -32,8 +33,10 @@ def main():
         while True:
             action = agent.act(ob, reward, done)
             ob, reward, done, _ = env.step(action)
+            # print("Ob: ",ob)
             if done:
                 print("Done")
+                print("reward: ",reward)
                 break
             # Note there's no env.render() here. But the environment still can open window and
             # render if asked by env.monitor: it calls env.render('rgb_array') to record video.
@@ -53,4 +56,9 @@ if __name__ == '__main__':
     # bkgd = pygame.image.load('gym_highway/envs/roadImg.png').convert()
     # print("Img loaded")
     # return bkgd
+    # new_arry = np.array([-100,0,0,-25]*4).flatten()
+    # print(new_arry)
+    # flattened_array = new_arry.flatten()
+    # print(flattened_array)
+
     main()

@@ -279,12 +279,13 @@ class Obstacle(pygame.sprite.Sprite):
         self.rect.y = self.position.y * Constants.ppu - self.rect.height / 2
 
 class HighwaySimulator:
-    def __init__(self, cars_list, obstacle_list, is_manual=False, inf_obstacles=False, is_data_saved=False):
+    def __init__(self, cars_list, obstacle_list, is_manual=False, inf_obstacles=False, is_data_saved=False, render=False):
         pygame.init()
-        pygame.display.set_caption("Car tutorial")
         width = Constants.WIDTH
         height = Constants.HEIGHT
-        self.screen = pygame.display.set_mode((width, height))
+        if render:
+            pygame.display.set_caption("Car tutorial")
+            self.screen = pygame.display.set_mode((width, height))
         self.clock = pygame.time.Clock()
         self.ticks = 60
         self.exit = False
@@ -295,6 +296,7 @@ class HighwaySimulator:
         self.is_manual = is_manual
         self.inf_obstacles = inf_obstacles
         self.is_data_saved = is_data_saved
+        self.render = render
         self.total_runs = 100
         self.run_duration = 60 # 60 seconds
 
@@ -675,8 +677,9 @@ class HighwaySimulator:
         pygame.quit()
 
     def reset(self):
-        self.bkgd = self.loadBackground()
-        self.bkgd_x = 0
+        if self.render:
+            self.bkgd = self.loadBackground()
+            self.bkgd_x = 0
 
         # track data across multiple runs and agents
         self.all_data = [[] for x in range(6)]
@@ -743,7 +746,8 @@ class HighwaySimulator:
                 if e.key == pygame.K_r: self.is_paused = False
 
         if self.is_paused:
-            pygame.display.flip()
+            if self.render:
+                pygame.display.flip()
             self.clock.tick(self.ticks)
             return 0.0
 
@@ -801,30 +805,31 @@ class HighwaySimulator:
                     self.all_obstacles.add(new_obstacle)
 
         # Drawing
-        self.screen.fill((0, 0, 0))
-        
-        #Draw The Scrolling Road
-        rel_x = self.bkgd_x % self.bkgd.get_rect().width
-        self.screen.blit(self.bkgd, (rel_x - self.bkgd.get_rect().width, 0))
-        if rel_x < Constants.WIDTH:
-            self.screen.blit(self.bkgd, (rel_x, 0))
-        self.bkgd_x -= self.reference_car.velocity.x
+        if self.render:
+            self.screen.fill((0, 0, 0))
+            
+            # Draw The Scrolling Road
+            rel_x = self.bkgd_x % self.bkgd.get_rect().width
+            self.screen.blit(self.bkgd, (rel_x - self.bkgd.get_rect().width, 0))
+            if rel_x < Constants.WIDTH:
+                self.screen.blit(self.bkgd, (rel_x, 0))
+            self.bkgd_x -= self.reference_car.velocity.x
 
-        # update the agent sprites
-        self.updateSprites(self.all_agents)
-        # update obstacle sprites
-        self.updateSprites(self.all_coming_cars)
+            # update the agent sprites
+            self.updateSprites(self.all_agents)
+            # update obstacle sprites
+            self.updateSprites(self.all_coming_cars)
 
-        # update collision display count
-        self.displayScore(self.num_obs_collisions, self.num_agent_collisions)
+            # update collision display count
+            self.displayScore(self.num_obs_collisions, self.num_agent_collisions)
 
-        # display position of car
-        self.displayPos(self.reference_car.velocity.x)
+            # display position of car
+            self.displayPos(self.reference_car.velocity.x)
 
-        # display selected action
-        self.displayAction(action)
+            # display selected action
+            self.displayAction(action)
 
-        pygame.display.flip()
+            pygame.display.flip()
 
         self.collision_count_lock = False
 
@@ -835,18 +840,24 @@ class HighwaySimulator:
 
     def get_state(self):
         """
-            Observations correspond to positions and velocities of vehicles on the road.
+            Observations correspond to positions and velocities of all vehicles on the road.
             Each vehicle contains 4 parameters [pos_x, pos_y, vel_x, vel_y]
+            The agent position and velocity is the first entry in the observation space.
 
             Returns
             -------
             [[pos_x, pos_y, vel_x, vel_y], ... ]
         """
-        observations = numpy.zeros(shape=(len(self.all_obstacles),4))
-        
-        for idx, obj in enumerate(self.all_obstacles):
-            observations[idx] = [obj.position.x, obj.position.y, obj.velocity.x, obj.velocity.y]
+        ref_car = self.reference_car
 
+        ob_list = []
+        ob_list.append([ref_car.position.x, ref_car.position.y, ref_car.velocity.x, ref_car.angular_velocity])
+        # for idx, obj in enumerate(self.all_obstacles):
+        for obj in self.all_obstacles:
+            if obj != ref_car:
+                ob_list.append([obj.position.x, obj.position.y, obj.velocity.x, obj.velocity.y])
+
+        observations = numpy.array(ob_list, dtype=numpy.float32).flatten()
         return observations
 
     def get_info(self):
@@ -863,6 +874,10 @@ class HighwaySimulator:
 
     def close(self):
         pygame.quit()
+
+    def seed(self, seed):
+        random.seed(seed)
+        numpy.random.seed
 
     def initObjects(self, data_point):
 
