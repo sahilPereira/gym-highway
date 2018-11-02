@@ -3,7 +3,8 @@ import pygame
 from math import tan, radians, degrees, copysign, ceil
 from pygame.math import Vector2
 # import stackelbergPlayer as SCP
-from .stackelbergPlayer import StackelbergPlayer, Action
+# from stackelbergPlayer import StackelbergPlayer, Action
+from gym_highway.envs.stackelbergPlayer import StackelbergPlayer, Action
 from random import randrange
 import random
 import math
@@ -445,7 +446,7 @@ class HighwaySimulator:
 
     def run(self, cars_list, obstacle_list, is_manual=False, inf_obstacles=False, is_data_saved=False):
 
-        bkgd = pygame.image.load('roadImg.png').convert()
+        bkgd = pygame.image.load('gym_highway/envs/roadImg.png').convert()
         bkgd = pygame.transform.scale(bkgd, (Constants.WIDTH, Constants.HEIGHT))
         bkgd_x = 0
 
@@ -556,6 +557,8 @@ class HighwaySimulator:
                             collision_group.remove(agent)
                             car_collision_list = pygame.sprite.spritecollide(agent,collision_group,False)
                             num_agent_collisions += len(car_collision_list)
+
+                            # print("Collisions: ",num_obs_collisions+num_agent_collisions)
 
                     # update all sprites
                     all_agents.update(dt, reference_car)
@@ -713,8 +716,8 @@ class HighwaySimulator:
         self.num_obs_collisions = 0
         self.num_agent_collisions = 0
 
-        self.total_velocity_per_run = []
-        self.total_distance_per_run = []
+        self.total_velocity_per_run = [self.reference_car.velocity.x]
+        self.total_distance_per_run = [self.reference_car.velocity.x]
 
         self.collision_count_lock = True
         self.run_time = 0.0
@@ -736,14 +739,17 @@ class HighwaySimulator:
         # dt = 50.0/1000.0 (For faster simulation)
         dt = self.clock.get_time() / 1000
 
+        # reset reward so that it corresponds to current action
+        self.reward = 0.0
+
         # pause game when needed
         for e in pygame.event.get():
             if e.type == pygame.QUIT:
                 # self.is_done = True
                 self.close()
-            if e.type == pygame.KEYDOWN:
-                if e.key == pygame.K_p: self.is_paused = True
-                if e.key == pygame.K_r: self.is_paused = False
+            # if e.type == pygame.KEYDOWN:
+            #     if e.key == pygame.K_p: self.is_paused = True
+            #     if e.key == pygame.K_r: self.is_paused = False
 
         if self.is_paused:
             if self.render:
@@ -767,20 +773,37 @@ class HighwaySimulator:
             for agent in self.all_agents:
                 # get collisions with non reactive obstacles
                 car_collision_list = pygame.sprite.spritecollide(agent,self.all_coming_cars,False)
-                self.num_obs_collisions += len(car_collision_list)
+                obs_collision_val = len(car_collision_list)
+                self.num_obs_collisions += obs_collision_val
 
                 collision_group = self.all_agents.copy()
                 collision_group.remove(agent)
                 car_collision_list = pygame.sprite.spritecollide(agent,collision_group,False)
-                self.num_agent_collisions += len(car_collision_list)
+                agent_collision_val = len(car_collision_list)
+                self.num_agent_collisions += agent_collision_val
 
-                self.reward -= self.num_obs_collisions + self.num_agent_collisions
+                self.reward -= obs_collision_val + agent_collision_val
+                if self.reward < 0:
+                    # end run when crash occurs
+                    self.is_done = True
 
         # update all sprites
         self.all_agents.update(dt, self.reference_car)
         self.all_coming_cars.update(dt, self.reference_car)
 
-        self.reward += self.reference_car.velocity.x * dt
+        # max reward per step is 1.0 for going at max velocity
+        if self.reward == 0.0:
+            # self.reward = self.reference_car.velocity.x / self.reference_car.max_velocity
+
+            # TODO: test delayed reward
+            if self.is_done:
+                self.reward = (sum(self.total_velocity_per_run) / float(len(self.total_velocity_per_run))) / self.reference_car.max_velocity
+
+        # keep track of agent velocity at end of every action
+        if self.log_timer >= Constants.ACTION_RESET_TIME:
+            for agent in self.all_agents:
+                self.total_velocity_per_run.append(agent.velocity.x)
+            self.log_timer = 0.0
 
         sorted_agents = sorted(self.all_agents, key=lambda x: x.position.x, reverse=True)
         self.reference_car = sorted_agents[0]
@@ -1020,13 +1043,14 @@ if __name__ == '__main__':
     obstacle_3 = {'id':102, 'x':-40, 'y':Constants.LANE_3_C, 'vel_x':10.0, 'lane_id':3, 'color':Constants.YELLOW}
     obstacle_list = [obstacle_1, obstacle_2, obstacle_3]
 
-    car_1 = {'id':0, 'x':20, 'y':Constants.LANE_2_C, 'vel_x':10.0, 'vel_y':0.0, 'lane_id':2}
-    car_2 = {'id':1, 'x':5, 'y':Constants.LANE_1_C, 'vel_x':10.0, 'vel_y':0.0, 'lane_id':1}
-    car_3 = {'id':2, 'x':5, 'y':Constants.LANE_2_C, 'vel_x':10.0, 'vel_y':0.0, 'lane_id':2}
-    car_4 = {'id':3, 'x':20, 'y':Constants.LANE_3_C, 'vel_x':10.0, 'vel_y':0.0, 'lane_id':3}
-    car_5 = {'id':4, 'x':5, 'y':Constants.LANE_3_C, 'vel_x':10.0, 'vel_y':0.0, 'lane_id':3}
-    cars_list = [car_1, car_2, car_3, car_4, car_5]
+    car_1 = {'id':0, 'x':10, 'y':Constants.LANE_2_C, 'vel_x':10.0, 'vel_y':0.0, 'lane_id':2}
+    # car_2 = {'id':1, 'x':5, 'y':Constants.LANE_1_C, 'vel_x':10.0, 'vel_y':0.0, 'lane_id':1}
+    # car_3 = {'id':2, 'x':5, 'y':Constants.LANE_2_C, 'vel_x':10.0, 'vel_y':0.0, 'lane_id':2}
+    # car_4 = {'id':3, 'x':10, 'y':Constants.LANE_3_C, 'vel_x':10.0, 'vel_y':0.0, 'lane_id':3}
+    # car_5 = {'id':4, 'x':5, 'y':Constants.LANE_3_C, 'vel_x':10.0, 'vel_y':0.0, 'lane_id':3}
+    # cars_list = [car_1, car_2, car_3, car_4, car_5]
+    cars_list = [car_1]
 
-    game = HighwaySimulator()
+    game = HighwaySimulator(cars_list, obstacle_list, args.manual, args.inf_obs, args.save_data, True)
     # run the simulation
     game.run(cars_list, obstacle_list, args.manual, args.inf_obs, args.save_data)

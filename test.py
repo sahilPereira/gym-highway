@@ -31,12 +31,14 @@ def main():
     for i in range(episode_count):
         ob = env.reset()
         while True:
-            action = agent.act(ob, reward, done)
+            # action = agent.act(ob, reward, done)
+            action = 3
             ob, reward, done, _ = env.step(action)
+            print("reward: ",reward)
             # print("Ob: ",ob)
             if done:
                 print("Done")
-                print("reward: ",reward)
+                print("Full run reward: ",reward)
                 break
             # Note there's no env.render() here. But the environment still can open window and
             # render if asked by env.monitor: it calls env.render('rgb_array') to record video.
@@ -61,4 +63,7 @@ if __name__ == '__main__':
     # flattened_array = new_arry.flatten()
     # print(flattened_array)
 
-    main()
+    rand_num = 0 < 0.0
+    print(rand_num)
+
+    # main()
