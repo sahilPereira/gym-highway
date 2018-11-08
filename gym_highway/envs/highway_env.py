@@ -19,55 +19,6 @@ ACTION_LOOKUP = {
     4 : Action.DECELERATE,
 }
 
-
-# class MyModelClass(Model):
-#     def _build_layers_v2(self, input_dict, num_outputs, options):
-#         """Define the layers of a custom model.
-
-#         Arguments:
-#             input_dict (dict): Dictionary of input tensors, including "obs",
-#                 "prev_action", "prev_reward".
-#             num_outputs (int): Output tensor must be of size
-#                 [BATCH_SIZE, num_outputs].
-#             options (dict): Model options.
-
-#         Returns:
-#             (outputs, feature_layer): Tensors of size [BATCH_SIZE, num_outputs]
-#                 and [BATCH_SIZE, desired_feature_size].
-
-#         When using dict or tuple observation spaces, you can access
-#         the nested sub-observation batches here as well:
-
-#         Examples:
-#             >>> print(input_dict)
-#             {'prev_actions': <tf.Tensor shape=(?,) dtype=int64>,
-#              'prev_rewards': <tf.Tensor shape=(?,) dtype=float32>,
-#              'obs': OrderedDict([
-#                 ('sensors', OrderedDict([
-#                     ('front_cam', [
-#                         <tf.Tensor shape=(?, 10, 10, 3) dtype=float32>,
-#                         <tf.Tensor shape=(?, 10, 10, 3) dtype=float32>]),
-#                     ('position', <tf.Tensor shape=(?, 3) dtype=float32>),
-#                     ('velocity', <tf.Tensor shape=(?, 3) dtype=float32>)]))])}
-#         """
-
-#         layer1 = slim.fully_connected(input_dict["obs"], 64, ...)
-#         layer2 = slim.fully_connected(layer1, 64, ...)
-#         ...
-#         return layerN, layerN_minus_1
-
-#     def value_function(self):
-#         """Builds the value function output.
-
-#         This method can be overridden to customize the implementation of the
-#         value function (e.g., not sharing hidden layers).
-
-#         Returns:
-#             Tensor of size [BATCH_SIZE] for the value function.
-#         """
-#         return tf.reshape(
-#             linear(self.last_layer, 1, "value", normc_initializer(1.0)), [-1])
-
 class HighwayEnv(gym.Env, utils.EzPickle):
     metadata = {'render.modes': ['human']}
 

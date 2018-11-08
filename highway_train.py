@@ -20,16 +20,66 @@ from ray.tune.registry import register_env
 # from ray.rllib.agents.ddpg import DDPGAgent
 from ray.rllib.agents.ppo import PPOAgent
 
-# import argparse
 import json
 import os
-# import pickle
 
-# import gym
-# import ray
+import tensorflow as tf
+import tensorflow.contrib.slim as slim
 from ray.rllib.agents.agent import get_agent_class
 from ray.rllib.agents.dqn.common.wrappers import wrap_dqn
-from ray.rllib.models import ModelCatalog
+from ray.rllib.models import ModelCatalog, Model
+from ray.rllib.models.misc import normc_initializer, get_activation_fn
+
+
+class CustomFCModel(Model):
+    def _build_layers(self, inputs, num_outputs, options):
+        """Define the layers of a custom model.
+
+        Arguments:
+            input_dict (dict): Dictionary of input tensors, including "obs",
+                "prev_action", "prev_reward".
+            num_outputs (int): Output tensor must be of size
+                [BATCH_SIZE, num_outputs].
+            options (dict): Model options.
+        """
+        hiddens = options.get("fcnet_hiddens", [256, 256, 256])
+        activation = get_activation_fn(options.get("fcnet_activation", "relu"))
+
+        with tf.name_scope("fc_net"):
+            i = 1
+            last_layer = inputs
+            for size in hiddens:
+                label = "fc{}".format(i)
+                last_layer = slim.fully_connected(
+                    last_layer,
+                    size,
+                    weights_initializer=normc_initializer(1.0),
+                    activation_fn=activation,
+                    scope=label)
+                i += 1
+            label = "fc_out"
+            output = slim.fully_connected(
+                last_layer,
+                num_outputs,
+                weights_initializer=normc_initializer(0.01),
+                activation_fn=None,
+                scope=label)
+            return output, last_layer
+
+    def value_function(self):
+        """Builds the value function output.
+
+        This method can be overridden to customize the implementation of the
+        value function (e.g., not sharing hidden layers).
+
+        Returns:
+            Tensor of size [BATCH_SIZE] for the value function.
+        """
+        return tf.reshape(
+            linear(self.last_layer, 1, "value", normc_initializer(1.0)), [-1])
+
+def register_custom_model():
+    ModelCatalog.register_custom_model("custom_fc_model", CustomFCModel)
 
 def trainGymHighway():
     """
@@ -39,20 +89,31 @@ def trainGymHighway():
         - double check if rewards are being added properly (Fixed: separate reward for each step)
         - check policy models
         - check activations
+        - Consider using a LSTM since it can help with making decisions over time
+            - I should definitely be using LSTMs here since they will help us see how our actions affect our state over time
+            - Right now we are only making decision based on the current state without considering the history.
     """
 
     env_creator_name = "Highway-v0"
     register_env(env_creator_name, lambda _: HighwayEnv(False, True, False, False))
-    ray.init()
+
+    # register custom model
+    register_custom_model()
+
+    ray.init(num_gpus=1)
 
     ppo_agent = PPOAgent(
         env=env_creator_name,
         config={
             "num_workers": 4,
             "num_envs_per_worker": 1,
-            "sample_batch_size":64,
-            "train_batch_size":1280,
+            # "sample_batch_size":64,
+            # "train_batch_size":1280,
             "num_gpus":1,
+            "model": {
+                "custom_model": "custom_fc_model",
+                "custom_options": {},
+            },
         })
 
     # TODO: restore last best checkpoint

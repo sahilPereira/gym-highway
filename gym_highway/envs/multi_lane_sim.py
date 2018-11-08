@@ -782,7 +782,7 @@ class HighwaySimulator:
                 agent_collision_val = len(car_collision_list)
                 self.num_agent_collisions += agent_collision_val
 
-                self.reward -= obs_collision_val + agent_collision_val
+                self.reward -= (obs_collision_val + agent_collision_val)*1.0
                 if self.reward < 0:
                     # end run when crash occurs
                     self.is_done = True
@@ -793,11 +793,14 @@ class HighwaySimulator:
 
         # max reward per step is 1.0 for going at max velocity
         if self.reward == 0.0:
-            # self.reward = self.reference_car.velocity.x / self.reference_car.max_velocity
+            self.reward = self.reference_car.velocity.x / self.reference_car.max_velocity
+
+            # TODO: rethink this because a negative reward indicates a crash
+            # self.reward = (self.reference_car.velocity.x / self.reference_car.max_velocity) - 1.0
 
             # TODO: test delayed reward
-            if self.is_done:
-                self.reward = (sum(self.total_velocity_per_run) / float(len(self.total_velocity_per_run))) / self.reference_car.max_velocity
+            # if self.is_done:
+            #     self.reward = (sum(self.total_velocity_per_run) / float(len(self.total_velocity_per_run))) / self.reference_car.max_velocity
 
         # keep track of agent velocity at end of every action
         if self.log_timer >= Constants.ACTION_RESET_TIME:
