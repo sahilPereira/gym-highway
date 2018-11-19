@@ -92,6 +92,7 @@ def trainGymHighway():
         - Consider using a LSTM since it can help with making decisions over time
             - I should definitely be using LSTMs here since they will help us see how our actions affect our state over time
             - Right now we are only making decision based on the current state without considering the history.
+        - Learning rates 0.0005, 0.001, 0.00146 performed best
     """
 
     env_creator_name = "Highway-v0"
@@ -105,14 +106,15 @@ def trainGymHighway():
     ppo_agent = PPOAgent(
         env=env_creator_name,
         config={
-            "num_workers": 4,
+            "num_workers": 6,
             "num_envs_per_worker": 1,
-            # "sample_batch_size":64,
-            # "train_batch_size":1280,
+            "sample_batch_size":64,
+            "train_batch_size":1280,
             "num_gpus":1,
             "model": {
                 "custom_model": "custom_fc_model",
                 "custom_options": {},
+                "use_lstm": True,
             },
         })
 
@@ -121,9 +123,9 @@ def trainGymHighway():
     # ppo_agent.restore(checkpoint)
 
     # Just check that it runs without crashing
-    best_reward = 0
+    best_reward = -150.0
     # TODO: testing for 1 hour (60 runs)
-    for i in range(1000):
+    for i in range(250):
         result = ppo_agent.train()
 
         print("Iteration {}, reward {}, timesteps {}".format(
@@ -134,13 +136,15 @@ def trainGymHighway():
             print("checkpoint saved at", checkpoint)
             best_reward = result["episode_reward_mean"]
 
+    print("Final Best Avg. Reward: ", best_reward)
+    print("Final Best Avg. Reward checkpoint: ", checkpoint)
 
 # rllib rollout /tmp/ray/checkpoint_dir/checkpoint-0 --run DQN
     # --env CartPole-v0 --steps 1000000 --out rollouts.pkl
 # https://ray.readthedocs.io/en/latest/rllib-training.html#python-api
 def testGymHighway(args):
-    checkpoint_dir = "/home/s6pereir/ray_results/PPO_Highway-v0_2018-10-30_00-14-29nniwg382/"
-    checkpoint = "/home/s6pereir/ray_results/PPO_Highway-v0_2018-10-30_00-14-29nniwg382/checkpoint-101"
+    checkpoint_dir = "/home/s6pereir/ray_results/PPO_Highway-v0_2018-11-14_14-14-07odw1qnj9/"
+    checkpoint = "/home/s6pereir/ray_results/PPO_Highway-v0_2018-11-14_14-14-07odw1qnj9/checkpoint-50"
 
     # Load configuration from file
     config_dir = os.path.dirname(checkpoint_dir)
@@ -150,21 +154,57 @@ def testGymHighway(args):
         config = json.load(f)
 
     env_creator_name = "Highway-v0"
-    register_env(env_creator_name, lambda _: HighwayEnv(False, True, False, True))
+    # register_env(env_creator_name, lambda _: HighwayEnv(False, True, False, True))
+    register_env(env_creator_name, lambda _: HighwayEnv(False, True, False, False))
+
+    # register custom model
+    register_custom_model()
+
     env = gym.make('Highway-v0')
 
-    ray.init()
+    ray.init(num_gpus=1)
 
     num_steps = int(10)
-    agent = PPOAgent(env=env_creator_name)
+    # agent = PPOAgent(env=env_creator_name,
+    #     config={
+    #         # "num_workers": 4,
+    #         # "num_envs_per_worker": 1,
+    #         # "sample_batch_size":64,
+    #         # "train_batch_size":1280,
+    #         "num_gpus":1,
+    #         "model": {
+    #             "custom_model": "custom_fc_model",
+    #             "custom_options": {},
+    #         },
+    #     })
+
+    # TEST: using LSTM 
+    # ====================================================
+    agent = PPOAgent(env=env_creator_name,
+        config={
+            "num_workers": 1,
+            "num_envs_per_worker": 1,
+            "sample_batch_size":64,
+            "train_batch_size":1280,
+            "num_gpus":1,
+            "model": {
+                "custom_model": "custom_fc_model",
+                "custom_options": {},
+                "use_lstm": True,
+            },
+        })
+
     agent.restore(checkpoint)
     
     steps = 0
     while steps < num_steps:
         state = env.reset()
+        # lstm_state = agent._policy_graph.get_initial_state(agent)
+        lstm_state = [np.zeros(256), np.zeros(256)]
         reward_total = 0.0
         while True:
-            action = agent.compute_action(state)
+            # computed action, rnn state, logits dictionary
+            action, lstm_state, _ = agent.compute_action(state, lstm_state)
             next_state, reward, done, _ = env.step(action)
             reward_total += reward
             state = next_state
@@ -173,6 +213,25 @@ def testGymHighway(args):
                 break
         steps += 1
         print("Episode reward", reward_total)
+
+    # ====================================================
+
+    # agent.restore(checkpoint)
+    
+    # steps = 0
+    # while steps < num_steps:
+    #     state = env.reset()
+    #     reward_total = 0.0
+    #     while True:
+    #         action = agent.compute_action(state)
+    #         next_state, reward, done, _ = env.step(action)
+    #         reward_total += reward
+    #         state = next_state
+    #         if done:
+    #             print("Done")
+    #             break
+    #     steps += 1
+    #     print("Episode reward", reward_total)
     env.close()
 
 if __name__ == "__main__":

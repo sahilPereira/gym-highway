@@ -45,7 +45,7 @@ class HighwayEnv(gym.Env, utils.EzPickle):
         obstacle_3 = {'id':102, 'x':-40, 'y':Constants.LANE_3_C, 'vel_x':10.0, 'lane_id':3, 'color':Constants.YELLOW}
         obstacle_list = [obstacle_1, obstacle_2, obstacle_3]
 
-        car_1 = {'id':0, 'x':20, 'y':Constants.LANE_2_C, 'vel_x':10.0, 'vel_y':0.0, 'lane_id':2}
+        car_1 = {'id':0, 'x':20, 'y':Constants.LANE_2_C, 'vel_x':0.0, 'vel_y':0.0, 'lane_id':2}
         # car_2 = {'id':1, 'x':5, 'y':LANE_1_C, 'vel_x':10.0, 'vel_y':0.0, 'lane_id':1}
         # car_3 = {'id':2, 'x':5, 'y':LANE_2_C, 'vel_x':10.0, 'vel_y':0.0, 'lane_id':2}
         # car_4 = {'id':3, 'x':20, 'y':LANE_3_C, 'vel_x':10.0, 'vel_y':0.0, 'lane_id':3}
@@ -91,7 +91,7 @@ class HighwayEnv(gym.Env, utils.EzPickle):
             reward = self._take_action(action)
 
             # if action leads to crash, end the run
-            if reward < 0:
+            if reward < -1.0:
                 break
         ob = self._get_state()
 
