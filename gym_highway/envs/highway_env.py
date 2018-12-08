@@ -14,9 +14,9 @@ logger = logging.getLogger(__name__)
 ACTION_LOOKUP = {
     0 : Action.LEFT,
     1 : Action.RIGHT,
-    2 : Action.MAINTAIN,
-    3 : Action.ACCELERATE,
-    4 : Action.DECELERATE,
+    2 : Action.ACCELERATE,
+    3 : Action.MAINTAIN,
+    # 3 : Action.DECELERATE,
 }
 
 class HighwayEnv(gym.Env, utils.EzPickle):
@@ -94,6 +94,9 @@ class HighwayEnv(gym.Env, utils.EzPickle):
             if reward < -1.0:
                 break
         ob = self._get_state()
+
+        # round the reward
+        reward = round(reward, 3)
 
         return ob, reward, self.env.is_episode_over(), self.env.get_info()
 

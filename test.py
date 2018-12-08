@@ -31,8 +31,8 @@ def main():
     for i in range(episode_count):
         ob = env.reset()
         while True:
-            # action = agent.act(ob, reward, done)
-            action = 3
+            action = agent.act(ob, reward, done)
+            # action = 3
             ob, reward, done, _ = env.step(action)
             print("reward: ",reward)
             # print("Ob: ",ob)
@@ -63,7 +63,8 @@ if __name__ == '__main__':
     # flattened_array = new_arry.flatten()
     # print(flattened_array)
 
-    rand_num = 0 < 0.0
-    print(rand_num)
+    # myList = [0.30000000000000004, 0.5, 0.20000000000000001]
+    # myRoundedList = [ round(elem, 2) for elem in myList ]
+    # print(myRoundedList)
 
-    # main()
+    main()

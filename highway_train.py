@@ -19,6 +19,7 @@ from ray.tune.registry import register_env
 # from ray.rllib.agents.ppo.ppo_policy_graph import PPOPolicyGraph
 # from ray.rllib.agents.ddpg import DDPGAgent
 from ray.rllib.agents.ppo import PPOAgent
+import config as Config
 
 import json
 import os
@@ -42,8 +43,8 @@ class CustomFCModel(Model):
                 [BATCH_SIZE, num_outputs].
             options (dict): Model options.
         """
-        hiddens = options.get("fcnet_hiddens", [256, 256, 256])
-        activation = get_activation_fn(options.get("fcnet_activation", "relu"))
+        hiddens = options.get("fcnet_hiddens", Config.fcnet_hiddens)
+        activation = get_activation_fn(options.get("fcnet_activation", Config.fcnet_activation))
 
         with tf.name_scope("fc_net"):
             i = 1
@@ -93,6 +94,8 @@ def trainGymHighway():
             - I should definitely be using LSTMs here since they will help us see how our actions affect our state over time
             - Right now we are only making decision based on the current state without considering the history.
         - Learning rates 0.0005, 0.001, 0.00146 performed best
+        - Change entropy_coeff to 0.1 (this was the value in the atari paper)
+            - TEST: testing with 0.3 in 2 action case
     """
 
     env_creator_name = "Highway-v0"
@@ -101,31 +104,32 @@ def trainGymHighway():
     # register custom model
     register_custom_model()
 
-    ray.init(num_gpus=1)
+    ray.init(num_gpus=Config.num_gpus)
 
     ppo_agent = PPOAgent(
         env=env_creator_name,
         config={
-            "num_workers": 6,
-            "num_envs_per_worker": 1,
-            "sample_batch_size":64,
-            "train_batch_size":1280,
-            "num_gpus":1,
+            "num_workers": Config.num_workers,
+            "num_envs_per_worker": Config.num_envs_per_worker,
+            "sample_batch_size":Config.sample_batch_size,
+            "train_batch_size":Config.train_batch_size,
+            "num_gpus":Config.num_gpus,
+            "entropy_coeff":Config.entropy_coeff,
             "model": {
                 "custom_model": "custom_fc_model",
                 "custom_options": {},
-                "use_lstm": True,
+                "use_lstm": Config.use_lstm,
             },
         })
 
     # TODO: restore last best checkpoint
-    # checkpoint = "/home/s6pereir/ray_results/PPO_Highway-v0_2018-10-29_19-26-438_endbsi/checkpoint-100"
+    # From Nov 30 run
+    # checkpoint = "/home/s6pereir/ray_results/PPO_Highway-v0_2018-11-29_15-33-5968ohpqhg/checkpoint-804"
     # ppo_agent.restore(checkpoint)
 
     # Just check that it runs without crashing
-    best_reward = -150.0
-    # TODO: testing for 1 hour (60 runs)
-    for i in range(250):
+    best_reward = Config.initial_reward
+    for i in range(Config.episodes):
         result = ppo_agent.train()
 
         print("Iteration {}, reward {}, timesteps {}".format(
@@ -143,8 +147,8 @@ def trainGymHighway():
     # --env CartPole-v0 --steps 1000000 --out rollouts.pkl
 # https://ray.readthedocs.io/en/latest/rllib-training.html#python-api
 def testGymHighway(args):
-    checkpoint_dir = "/home/s6pereir/ray_results/PPO_Highway-v0_2018-11-14_14-14-07odw1qnj9/"
-    checkpoint = "/home/s6pereir/ray_results/PPO_Highway-v0_2018-11-14_14-14-07odw1qnj9/checkpoint-50"
+    checkpoint_dir = "/home/s6pereir/ray_results/PPO_Highway-v0_2018-12-04_16-58-49ejlbc74y/"
+    checkpoint = "/home/s6pereir/ray_results/PPO_Highway-v0_2018-12-04_16-58-49ejlbc74y/checkpoint-1290"
 
     # Load configuration from file
     config_dir = os.path.dirname(checkpoint_dir)
@@ -165,34 +169,37 @@ def testGymHighway(args):
     ray.init(num_gpus=1)
 
     num_steps = int(10)
-    # agent = PPOAgent(env=env_creator_name,
-    #     config={
-    #         # "num_workers": 4,
-    #         # "num_envs_per_worker": 1,
-    #         # "sample_batch_size":64,
-    #         # "train_batch_size":1280,
-    #         "num_gpus":1,
-    #         "model": {
-    #             "custom_model": "custom_fc_model",
-    #             "custom_options": {},
-    #         },
-    #     })
-
-    # TEST: using LSTM 
-    # ====================================================
     agent = PPOAgent(env=env_creator_name,
         config={
-            "num_workers": 1,
-            "num_envs_per_worker": 1,
-            "sample_batch_size":64,
-            "train_batch_size":1280,
-            "num_gpus":1,
+            "num_workers": Config.num_workers,
+            "num_envs_per_worker": Config.num_envs_per_worker,
+            "sample_batch_size":Config.sample_batch_size,
+            "train_batch_size":Config.train_batch_size,
+            "num_gpus":Config.num_gpus,
+            "entropy_coeff":Config.entropy_coeff,
             "model": {
                 "custom_model": "custom_fc_model",
                 "custom_options": {},
-                "use_lstm": True,
+                "use_lstm": Config.use_lstm,
             },
         })
+
+    # TEST: using LSTM 
+    # ====================================================
+    # agent = PPOAgent(env=env_creator_name,
+    #     config={
+    #         "num_workers": 1,
+    #         "num_envs_per_worker": 1,
+    #         "sample_batch_size":64,
+    #         "train_batch_size":1280,
+    #         "num_gpus":1,
+    #         # "entropy_coeff":0.3,
+    #         "model": {
+    #             "custom_model": "custom_fc_model",
+    #             "custom_options": {},
+    #             "use_lstm": True,
+    #         },
+    #     })
 
     agent.restore(checkpoint)
     
@@ -204,7 +211,8 @@ def testGymHighway(args):
         reward_total = 0.0
         while True:
             # computed action, rnn state, logits dictionary
-            action, lstm_state, _ = agent.compute_action(state, lstm_state)
+            # action, lstm_state, _ = agent.compute_action(state, lstm_state)
+            action = agent.compute_action(state)
             next_state, reward, done, _ = env.step(action)
             reward_total += reward
             state = next_state

@@ -44,9 +44,9 @@ class Constants():
 class Action(Enum):
     LEFT = 0
     RIGHT = 1
-    MAINTAIN = 2
-    ACCELERATE = 3
-    DECELERATE = 4
+    ACCELERATE = 2
+    MAINTAIN = 3
+    # DECELERATE = 3
 
 class Car(pygame.sprite.Sprite):
     def __init__(self, id, x, y, vel_x=0.0, vel_y=0.0, lane_id=1, color=Constants.RED, angle=0.0, length=4, max_steering=30, max_acceleration=5.0):
@@ -382,10 +382,10 @@ class HighwaySimulator:
     def executeAction(self, selected_action, leader, all_obstacles):
         if (selected_action == Action.ACCELERATE) and not leader.do_accelerate:
             self.accelerate(leader)
-        elif (selected_action == Action.DECELERATE) and not leader.do_decelerate:
-            self.decelerate(leader)
         elif (selected_action == Action.MAINTAIN) and not leader.do_maintain:
             self.maintain(leader, all_obstacles)
+        # elif (selected_action == Action.DECELERATE) and not leader.do_decelerate:
+        #     self.decelerate(leader)
 
         leader.acceleration = max(-leader.max_acceleration, min(leader.acceleration, leader.max_acceleration))
 
@@ -712,7 +712,8 @@ class HighwaySimulator:
         self.action_timer = 0.0
         self.log_timer = 0.0
         self.continuous_time = 0.0
-        self.current_action = Action.MAINTAIN.name
+        # self.current_action = Action.MAINTAIN.name
+        self.current_action = Action.ACCELERATE.name
         self.num_obs_collisions = 0
         self.num_agent_collisions = 0
 
@@ -796,7 +797,7 @@ class HighwaySimulator:
         if self.reward == 0.0:
             # self.reward = self.reference_car.velocity.x / self.reference_car.max_velocity
 
-            # TODO: rethink this because a negative reward indicates a crash
+            # TODO: reward of 0 for going max speed, negative reward otherwise
             self.reward = (self.reference_car.velocity.x / self.reference_car.max_velocity) - 1.0
 
             # TODO: test delayed reward
@@ -830,6 +831,9 @@ class HighwaySimulator:
                     new_obstacle = Obstacle(id=randrange(100,1000), x=rand_pos_x, y=rand_pos_y, vel_x=rand_vel_x, vel_y=0.0, lane_id=rand_lane_id, color=Constants.YELLOW)
                     self.all_coming_cars.add(new_obstacle)
                     self.all_obstacles.add(new_obstacle)
+
+                    # TEST: reward for overtaking each vehicle
+                    self.reward += 1
 
         # Drawing
         if self.render:
