@@ -17,7 +17,7 @@ from ray.tune import run_experiments
 from ray.tune.registry import register_env
 # from ray.rllib.agents.ddpg.ddpg_policy_graph import DDPGPolicyGraph
 # from ray.rllib.agents.ppo.ppo_policy_graph import PPOPolicyGraph
-# from ray.rllib.agents.ddpg import DDPGAgent
+from ray.rllib.agents.a3c.a3c import A3CAgent
 from ray.rllib.agents.ppo import PPOAgent
 import config as Config
 
@@ -30,6 +30,8 @@ from ray.rllib.agents.agent import get_agent_class
 from ray.rllib.agents.dqn.common.wrappers import wrap_dqn
 from ray.rllib.models import ModelCatalog, Model
 from ray.rllib.models.misc import normc_initializer, get_activation_fn
+from gym_highway.envs.model import FCPolicy
+from gym_highway.envs.a3c_icm import A3CAgentICM
 
 
 class CustomFCModel(Model):
@@ -81,6 +83,7 @@ class CustomFCModel(Model):
 
 def register_custom_model():
     ModelCatalog.register_custom_model("custom_fc_model", CustomFCModel)
+    # ModelCatalog.register_custom_model("custom_fc_model", FCPolicy)
 
 def trainGymHighway():
     """
@@ -97,6 +100,7 @@ def trainGymHighway():
         - Change entropy_coeff to 0.1 (this was the value in the atari paper)
             - TEST: testing with 0.3 in 2 action case
     """
+    tf.reset_default_graph()
 
     env_creator_name = "Highway-v0"
     register_env(env_creator_name, lambda _: HighwayEnv(False, True, False, False))
@@ -106,15 +110,35 @@ def trainGymHighway():
 
     ray.init(num_gpus=Config.num_gpus)
 
-    ppo_agent = PPOAgent(
+    # ppo_agent = PPOAgent(
+    #     env=env_creator_name,
+    #     config={
+    #         "num_workers": Config.num_workers,
+    #         "num_envs_per_worker": Config.num_envs_per_worker,
+    #         "sample_batch_size":Config.sample_batch_size,
+    #         "train_batch_size":Config.train_batch_size,
+    #         "num_gpus":Config.num_gpus,
+    #         "entropy_coeff":Config.entropy_coeff,
+    #         "lr":Config.lr,
+    #         "model": {
+    #             "custom_model": "custom_fc_model",
+    #             "custom_options": {},
+    #             "use_lstm": Config.use_lstm,
+    #         },
+    #     })
+
+
+    # ppo_agent = A3CAgentICM(
+    ppo_agent = A3CAgent(
         env=env_creator_name,
         config={
             "num_workers": Config.num_workers,
             "num_envs_per_worker": Config.num_envs_per_worker,
             "sample_batch_size":Config.sample_batch_size,
             "train_batch_size":Config.train_batch_size,
-            "num_gpus":Config.num_gpus,
-            "entropy_coeff":Config.entropy_coeff,
+            "use_gpu_for_workers":Config.use_gpu_for_workers,
+            # "entropy_coeff":Config.entropy_coeff,
+            # "lr":Config.lr,
             "model": {
                 "custom_model": "custom_fc_model",
                 "custom_options": {},
@@ -123,8 +147,8 @@ def trainGymHighway():
         })
 
     # TODO: restore last best checkpoint
-    # From Nov 30 run
-    # checkpoint = "/home/s6pereir/ray_results/PPO_Highway-v0_2018-11-29_15-33-5968ohpqhg/checkpoint-804"
+    # From Dec 8 run
+    # checkpoint = "/home/s6pereir/ray_results/PPO_Highway-v0_2018-12-04_16-58-49ejlbc74y/checkpoint-1290"
     # ppo_agent.restore(checkpoint)
 
     # Just check that it runs without crashing
