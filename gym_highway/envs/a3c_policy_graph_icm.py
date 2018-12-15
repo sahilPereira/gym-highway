@@ -179,10 +179,10 @@ class A3CPolicyGraphICM(LearningRateSchedule, TFPolicyGraph):
         # return clipped_grads
         return grads_and_vars
 
-    # extra inputs for the ICM network
     def extra_compute_grad_fetches(self):
         return self.stats_fetches
 
+    # extra inputs for the ICM network
     def extra_compute_grad_feed_dict(self):
         feed_dict = {}
         if self.cur_batch:

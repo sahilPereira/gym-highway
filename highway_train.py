@@ -82,8 +82,8 @@ class CustomFCModel(Model):
             linear(self.last_layer, 1, "value", normc_initializer(1.0)), [-1])
 
 def register_custom_model():
-    ModelCatalog.register_custom_model("custom_fc_model", CustomFCModel)
-    # ModelCatalog.register_custom_model("custom_fc_model", FCPolicy)
+    # ModelCatalog.register_custom_model("custom_fc_model", CustomFCModel)
+    ModelCatalog.register_custom_model("custom_fc_model", FCPolicy)
 
 def trainGymHighway():
     """
@@ -128,8 +128,8 @@ def trainGymHighway():
     #     })
 
 
-    # ppo_agent = A3CAgentICM(
-    ppo_agent = A3CAgent(
+    # ppo_agent = A3CAgent(
+    ppo_agent = A3CAgentICM(
         env=env_creator_name,
         config={
             "num_workers": Config.num_workers,

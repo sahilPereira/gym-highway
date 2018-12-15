@@ -1,5 +1,5 @@
 # computation config
-num_workers = 1
+num_workers = 6
 num_envs_per_worker = 1
 num_gpus = 1
 
@@ -13,7 +13,7 @@ initial_reward = -140.0
 lr = 1e-4
 
 # Whether to place workers on GPUs (only for A3C)
-use_gpu_for_workers = True
+use_gpu_for_workers = False
 
 # policy network
 fcnet_hiddens = [256, 256, 256]

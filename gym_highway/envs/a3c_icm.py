@@ -16,6 +16,20 @@ class A3CAgentICM(A3CAgent):
     _default_config = DEFAULT_CONFIG
     _policy_graph = A3CPolicyGraphICM
 
+    # _agent_name = "A3C"
+    # _default_config = DEFAULT_CONFIG
+    # _policy_graph = A3CPolicyGraph
+
+    @classmethod
+    def default_resource_request(cls, config):
+        cf = merge_dicts(cls._default_config, config)
+        return Resources(
+            cpu=1,
+            gpu=1,
+            extra_cpu=cf["num_workers"],
+            # extra_gpu=cf["use_gpu_for_workers"] and cf["num_workers"] or 0)
+            extra_gpu=0) # NOTE: Hardcoded #gpus since original line uses #gpus = #cpus
+
     def _init(self):
         if self.config["use_pytorch"]:
             from ray.rllib.agents.a3c.a3c_torch_policy_graph import \
