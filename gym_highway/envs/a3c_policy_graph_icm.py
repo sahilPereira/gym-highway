@@ -85,8 +85,6 @@ class A3CPolicyGraphICM(LearningRateSchedule, TFPolicyGraph):
         action_dist = dist_class(self.model.outputs)
 
         # Define S/S+A predictor network
-        # TODO: update the predictors to work with non-image data
-        # TODO UPDATE: modified the predictors to work with vectorized data
         if self.unsup:
             with tf.variable_scope("predictor"):
                 if 'state' in unsupType:

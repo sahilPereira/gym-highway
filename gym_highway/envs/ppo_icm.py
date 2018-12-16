@@ -2,16 +2,16 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from ray.rllib.agents import Agent
-from ray.rllib.agents.ppo.ppo_policy_graph import PPOPolicyGraph
+from gym_highway.envs.ppo_policy_graph_icm import PPOPolicyGraphICM
+from ray.rllib.agents.ppo.ppo import PPOAgent, DEFAULT_CONFIG
 from ray.rllib.optimizers import SyncSamplesOptimizer, LocalMultiGPUOptimizer
 
-class PPOAgentICM(Agent):
+class PPOAgentICM(PPOAgent):
     """Multi-GPU optimized implementation of PPO in TensorFlow."""
 
     _agent_name = "PPO_ICM"
     _default_config = DEFAULT_CONFIG
-    # _policy_graph = PPOPolicyGraph
+    _policy_graph = PPOPolicyGraphICM
 
     def _init(self):
         self._validate_config()

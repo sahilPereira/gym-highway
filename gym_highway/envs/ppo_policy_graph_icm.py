@@ -3,6 +3,7 @@ from __future__ import division
 from __future__ import print_function
 
 import tensorflow as tf
+import numpy as np
 
 import ray
 from gym_highway.envs.model import StateActionPredictor, StatePredictor
@@ -14,8 +15,6 @@ from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.models.misc import linear, normc_initializer
 from ray.rllib.utils.explained_variance import explained_variance
 
-
-# TODO: update the loss to include the inverse and forward networks required for the ICM model.
 class PPOLoss(object):
     def __init__(self,
                  action_space,
@@ -27,6 +26,8 @@ class PPOLoss(object):
                  curr_action_dist,
                  value_fn,
                  cur_kl_coeff,
+                 unsupType,
+                 predictor,
                  entropy_coeff=0,
                  clip_param=0.1,
                  vf_clip_param=0.1,
@@ -90,8 +91,16 @@ class PPOLoss(object):
                                   entropy_coeff * curr_entropy)
         self.loss = loss
 
+        # computing predictor loss
+        self.predloss = None
+        if unsupType is not None:
+            if 'state' in unsupType:
+                self.predloss = constants['PREDICTION_LR_SCALE'] * predictor.forwardloss
+            else:
+                self.predloss = constants['PREDICTION_LR_SCALE'] * (predictor.invloss * (1-constants['FORWARD_LOSS_WT']) +
+                                                                predictor.forwardloss * constants['FORWARD_LOSS_WT'])
 
-class PPOPolicyGraph(LearningRateSchedule, TFPolicyGraph):
+class PPOPolicyGraphICM(LearningRateSchedule, TFPolicyGraph):
     def __init__(self,
                  observation_space,
                  action_space,
@@ -201,6 +210,8 @@ class PPOPolicyGraph(LearningRateSchedule, TFPolicyGraph):
             curr_action_dist,
             self.value_function,
             self.kl_coeff,
+            unsupType,
+            predictor,
             entropy_coeff=self.config["entropy_coeff"],
             clip_param=self.config["clip_param"],
             vf_clip_param=self.config["vf_clip_param"],
@@ -248,7 +259,7 @@ class PPOPolicyGraph(LearningRateSchedule, TFPolicyGraph):
 
     def copy(self, existing_inputs):
         """Creates a copy of self using existing input placeholders."""
-        return PPOPolicyGraph(
+        return PPOPolicyGraphICM(
             None,
             self.action_space,
             self.config,
@@ -293,6 +304,7 @@ class PPOPolicyGraph(LearningRateSchedule, TFPolicyGraph):
         return feed_dict
 
     def postprocess_trajectory(self, sample_batch, other_agent_batches=None):
+        self.cur_batch = sample_batch
         completed = sample_batch["dones"][-1]
         if completed:
             last_r = 0.0
@@ -310,26 +322,23 @@ class PPOPolicyGraph(LearningRateSchedule, TFPolicyGraph):
         return batch
 
     def gradients(self, optimizer):
-        return optimizer.compute_gradients(
-            self._loss, colocate_gradients_with_ops=True)
+        # return optimizer.compute_gradients(
+        #     self._loss, colocate_gradients_with_ops=True)
 
-    # TODO: update the gradient function
-    # def gradients(self, optimizer):
-    #     # compute gradients
-    #     grads = tf.gradients(self.loss.total_loss, self.model.var_list)
-    #     predgrads = tf.gradients(self.loss.predloss * 20.0, self.local_ap_network.var_list)
+        grads_and_vars = optimizer.compute_gradients(self.loss_obj.loss, 
+            self.model.var_list, colocate_gradients_with_ops=True)
 
-    #     # clip gradients
-    #     self.grads, _ = tf.clip_by_global_norm(grads, self.config["grad_clip"])
-    #     # clipped_grads = list(zip(self.grads, self.var_list))
-    #     grads_and_vars = list(zip(self.grads, self.model.var_list))
-    #     if self.unsup:
-    #         predgrads, _ = tf.clip_by_global_norm(predgrads, self.config["grad_clip"])
-    #         pred_grads_and_vars = list(zip(predgrads, self.local_ap_network.var_list))
-    #         grads_and_vars = grads_and_vars + pred_grads_and_vars
+        predgrads = tf.gradients(self.loss_obj.predloss * 20.0, self.local_ap_network.var_list)
 
-    #     # return clipped_grads
-    #     return grads_and_vars
+        # NOTE: not clipping policy grads as they were not clipped in original PPO graph
+        # clip gradients
+        if self.unsup:
+            predgrads, _ = tf.clip_by_global_norm(predgrads, self.config["grad_clip"])
+            pred_grads_and_vars = list(zip(predgrads, self.local_ap_network.var_list))
+            grads_and_vars = grads_and_vars + pred_grads_and_vars
+
+        # return clipped_grads
+        return grads_and_vars
 
     def get_initial_state(self):
         return self.model.state_init

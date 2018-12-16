@@ -424,7 +424,7 @@ class FCPolicy(object):
                 [self.outputs, 0.0 * self.outputs + log_std], 1)
 
         # value function
-        self.vf = tf.reshape(linear(self.last_layer, 1, "value", normc_initializer(1.0)),[-1])
+        # self.vf = tf.reshape(linear(self.last_layer, 1, "value", normc_initializer(1.0)),[-1])
 
         # variable list
         self.var_list = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, tf.get_variable_scope().name)
@@ -472,4 +472,5 @@ class FCPolicy(object):
         Returns:
             Tensor of size [BATCH_SIZE] for the value function.
         """
-        return self.vf
+        return tf.reshape(
+            linear(self.last_layer, 1, "value", normc_initializer(1.0)), [-1])
