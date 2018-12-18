@@ -248,10 +248,13 @@ class StateActionPredictor(object):
     def __init__(self, ob_space, ac_space, designHead='universe'):
         # input: s1,s2: : [None, h, w, ch] (usually ch=1 or 4)
         # asample: 1-hot encoding of sampled action from policy: [None, ac_space]
-        input_shape = [None] + list(ob_space)
-        self.s1 = phi1 = tf.placeholder(tf.float32, input_shape)
-        self.s2 = phi2 = tf.placeholder(tf.float32, input_shape)
-        self.asample = asample = tf.placeholder(tf.float32, [None, ac_space])
+        # input_shape = [None] + list(ob_space)
+        input_shape = (None,) + (16,)
+        # self.s1 = phi1 = tf.placeholder(tf.float32, input_shape)
+        # self.s2 = phi2 = tf.placeholder(tf.float32, input_shape)
+        self.s1 = phi1 = tf.placeholder(tf.float32, shape=input_shape, name="phi1")
+        self.s2 = phi2 = tf.placeholder(tf.float32, shape=input_shape, name="phi2")
+        self.asample = asample = tf.placeholder(tf.float32, shape=(None, ac_space), name="asample")
 
         # feature encoding: phi1, phi2: [None, LEN]
         size = 256
@@ -321,10 +324,11 @@ class StatePredictor(object):
     def __init__(self, ob_space, ac_space, designHead='universe', unsupType='state'):
         # input: s1,s2: : [None, h, w, ch] (usually ch=1 or 4)
         # asample: 1-hot encoding of sampled action from policy: [None, ac_space]
-        input_shape = [None] + list(ob_space)
-        self.s1 = phi1 = tf.placeholder(tf.float32, input_shape)
-        self.s2 = phi2 = tf.placeholder(tf.float32, input_shape)
-        self.asample = asample = tf.placeholder(tf.float32, [None, ac_space])
+        # input_shape = [None] + list(ob_space)
+        input_shape = (None,) + (16,)
+        self.s1 = phi1 = tf.placeholder(tf.float32, shape=input_shape, name="phi1")
+        self.s2 = phi2 = tf.placeholder(tf.float32, shape=input_shape, name="phi2")
+        self.asample = asample = tf.placeholder(tf.float32, shape=(None, ac_space), name="asample")
         self.stateAenc = unsupType == 'stateAenc'
 
         # feature encoding: phi1: [None, LEN]

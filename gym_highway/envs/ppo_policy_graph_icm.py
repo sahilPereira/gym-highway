@@ -2,8 +2,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import tensorflow as tf
 import numpy as np
+import tensorflow as tf
 
 import ray
 from gym_highway.envs.model import StateActionPredictor, StatePredictor
@@ -14,6 +14,7 @@ from ray.rllib.evaluation.tf_policy_graph import TFPolicyGraph, \
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.models.misc import linear, normc_initializer
 from ray.rllib.utils.explained_variance import explained_variance
+
 
 class PPOLoss(object):
     def __init__(self,
@@ -117,7 +118,8 @@ class PPOPolicyGraphICM(LearningRateSchedule, TFPolicyGraph):
                 placeholders upon which the graph should be built upon.
         """
         self.unsup = unsupType is not None
-        self.cur_batch = None
+        # self.cur_batch = None
+        # self.cur_sample_batch = {}
 
         predictor = None
         numaction = action_space.n
@@ -128,6 +130,7 @@ class PPOPolicyGraphICM(LearningRateSchedule, TFPolicyGraph):
         self.config = config
         self.kl_coeff_val = self.config["kl_coeff"]
         self.kl_target = self.config["kl_target"]
+
         dist_cls, logit_dim = ModelCatalog.get_action_dist(
             action_space, self.config["model"])
 
@@ -162,11 +165,15 @@ class PPOPolicyGraphICM(LearningRateSchedule, TFPolicyGraph):
             seq_lens=existing_seq_lens)
 
         if self.unsup:
+            # print("Observations space:", observation_space)
+            print("Observations shape:", tf.shape(self.observations)[0]) # tf.shape(x)[0]
+            print("Observations shape:", self.observations.shape[1:])
+            print("obs_ph shape:", tf.shape(obs_ph)[:1])
             with tf.variable_scope("predictor"):
                 if 'state' in unsupType:
-                    self.local_ap_network = predictor = StatePredictor(observation_space.shape, numaction, designHead, unsupType)
+                    self.local_ap_network = predictor = StatePredictor(tf.shape(self.observations)[0], numaction, designHead, unsupType)
                 else:
-                    self.local_ap_network = predictor = StateActionPredictor(observation_space.shape, numaction, designHead)
+                    self.local_ap_network = predictor = StateActionPredictor(tf.shape(self.observations)[0], numaction, designHead)
 
         # KL Coefficient
         self.kl_coeff = tf.get_variable(
@@ -230,6 +237,9 @@ class PPOPolicyGraphICM(LearningRateSchedule, TFPolicyGraph):
             ("vf_preds", vf_preds_ph),
         ]
 
+        # TODO: testing to see if this lets me pass inputs to ICM
+        # self.variables = ray.experimental.TensorFlowVariables(self.loss_in, self.sess)
+
         TFPolicyGraph.__init__(
             self,
             observation_space,
@@ -288,23 +298,37 @@ class PPOPolicyGraphICM(LearningRateSchedule, TFPolicyGraph):
         vf = self.sess.run(self.value_function, feed_dict)
         return vf[0]
 
-    def extra_compute_grad_feed_dict(self):
-        feed_dict = {}
-        if self.cur_batch:
-            if self.unsup:
-                # feed_dict["obs"] = self.cur_batch["obs"]
-                feed_dict[self.local_ap_network.s1] = self.cur_batch["obs"][:-1]
-                feed_dict[self.local_ap_network.s2] = self.cur_batch["obs"][1:]
+    # def extra_compute_grad_feed_dict(self):
+    #     feed_dict = {}
+    #     cur_batch = self.get_weights()
 
-                # NOTE: the StateActionPredictor expects a one-hot encoding of the action space,
-                # but my env is only providing a discrete action space.
-                # one_hot_actions = tf.one_hot(self.cur_batch["actions"], constants['NUM_ACTIONS'])
-                one_hot_actions = np.eye(constants['NUM_ACTIONS'])[self.cur_batch["actions"]]
-                feed_dict[self.local_ap_network.asample] = one_hot_actions[:-1]
-        return feed_dict
+    #     print("In extra_compute_grad_feed_dict: ", cur_batch.count)
+
+    #     if cur_batch:
+    #         print("Current Batch shape: ", cur_batch.count)
+    #         if self.unsup:
+    #             print("Current Batch obs: ", cur_batch["obs"][0])
+    #             feed_dict[self.local_ap_network.s1] = cur_batch["obs"][:-1]
+    #             feed_dict[self.local_ap_network.s2] = cur_batch["obs"][1:]
+
+    #             one_hot_actions = np.eye(constants['NUM_ACTIONS'])[cur_batch["actions"]]
+    #             feed_dict[self.local_ap_network.asample] = one_hot_actions[:-1]
+
+    #     # return self.grad_feed_dict
+
+    #     return feed_dict
 
     def postprocess_trajectory(self, sample_batch, other_agent_batches=None):
-        self.cur_batch = sample_batch
+
+        # print("In the postprocess_trajectory method")
+        # print("Sample Batch: ", sample_batch.count)
+        # print("Sample Batch: ", sample_batch["obs"][0])
+
+        # if sample_batch.count > 1:
+        #     # self.cur_batch = sample_batch
+        #     # self.set_feed_dict(sample_batch)
+        #     self.set_weights(sample_batch)
+
         completed = sample_batch["dones"][-1]
         if completed:
             last_r = 0.0
@@ -333,7 +357,7 @@ class PPOPolicyGraphICM(LearningRateSchedule, TFPolicyGraph):
         # NOTE: not clipping policy grads as they were not clipped in original PPO graph
         # clip gradients
         if self.unsup:
-            predgrads, _ = tf.clip_by_global_norm(predgrads, self.config["grad_clip"])
+            predgrads, _ = tf.clip_by_global_norm(predgrads, constants['GRAD_NORM_CLIP'])
             pred_grads_and_vars = list(zip(predgrads, self.local_ap_network.var_list))
             grads_and_vars = grads_and_vars + pred_grads_and_vars
 
@@ -342,3 +366,72 @@ class PPOPolicyGraphICM(LearningRateSchedule, TFPolicyGraph):
 
     def get_initial_state(self):
         return self.model.state_init
+
+    # def set_feed_dict(self, sample_batch):
+    #     print("In set_feed_dict: ", sample_batch.count)
+    #     print("is unsup?: ", self.unsup)
+
+    #     # self.grad_feed_dict = {}
+    #     if self.unsup:
+    #         print("Current Batch obs: ", sample_batch["obs"][0])
+    #         # feed_dict["obs"] = self.cur_batch["obs"]
+    #         self.grad_feed_dict[self.local_ap_network.s1] = sample_batch["obs"][:-1]
+    #         self.grad_feed_dict[self.local_ap_network.s2] = sample_batch["obs"][1:]
+
+    #         # NOTE: the StateActionPredictor expects a one-hot encoding of the action space,
+    #         # but my env is only providing a discrete action space.
+    #         one_hot_actions = np.eye(constants['NUM_ACTIONS'])[sample_batch["actions"]]
+    #         self.grad_feed_dict[self.local_ap_network.asample] = one_hot_actions[:-1]
+
+        # self.grad_feed_dict = feed_dict
+
+    def _get_loss_inputs_dict(self, batch):
+        feed_dict = {}
+
+        # Simple case
+        if not self.model.state_in:
+            for k, ph in self.loss_in:
+                feed_dict[ph] = batch[k]
+
+            # if self.unsup:
+            print("Current Batch obs: ", batch["obs"][0])
+            print("Current Batch s1 len: ", len(batch["obs"][:-1]))
+            print("Current Batch s2 len: ", len(batch["obs"][1:]))
+            print("Current Batch type: ", type(batch["obs"]))
+            
+            feed_dict[self.local_ap_network.s1] = batch["obs"][:-1]
+            feed_dict[self.local_ap_network.s2] = batch["obs"][1:]
+
+            one_hot_actions = np.eye(constants['NUM_ACTIONS'])[batch["actions"]]
+            print("Current Batch asample len: ", len(one_hot_actions[:-1]))
+            print("Some one hot Actions: ", one_hot_actions[1:5])
+            
+            one_hot_actions = np.float32(one_hot_actions)
+
+            print("Some one hot Actions type: ", type(one_hot_actions))
+            feed_dict[self.local_ap_network.asample] = list(one_hot_actions[:-1])
+
+            print("_get_loss_inputs_dict NON RNN feed_dict")
+            return feed_dict
+
+        # RNN case
+        feature_keys = [k for k, v in self._loss_inputs]
+        state_keys = [
+            "state_in_{}".format(i) for i in range(len(self._state_inputs))
+        ]
+        feature_sequences, initial_states, seq_lens = chop_into_sequences(
+            batch["eps_id"], [batch[k] for k in feature_keys],
+            [batch[k] for k in state_keys], self._max_seq_len)
+        for k, v in zip(feature_keys, feature_sequences):
+            feed_dict[self._loss_input_dict[k]] = v
+        for k, v in zip(state_keys, initial_states):
+            feed_dict[self._loss_input_dict[k]] = v
+        feed_dict[self._seq_lens] = seq_lens
+        print("_get_loss_inputs_dict RNN feed_dict")
+        return feed_dict
+
+    # def set_weights(self, weights):
+    #     self.variables.set_weights(weights)
+
+    # def get_weights(self):
+    #     return self.variables.get_weights()
