@@ -8,7 +8,7 @@ from __future__ import print_function
 
 import numpy as np
 import tensorflow as tf
-from gym_highway.envs.model import StateActionPredictor, StatePredictor
+from gym_highway.models.model import StateActionPredictor, StatePredictor
 from gym_highway.envs.constants import constants
 
 # imports from ray a3c_tf_policy_graph

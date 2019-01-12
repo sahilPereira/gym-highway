@@ -6,7 +6,7 @@ import numpy as np
 import tensorflow as tf
 
 import ray
-from gym_highway.envs.model import StateActionPredictor, StatePredictor
+from gym_highway.models.model import StateActionPredictor, StatePredictor
 from gym_highway.envs.constants import constants
 from ray.rllib.evaluation.postprocessing import compute_advantages
 from ray.rllib.evaluation.tf_policy_graph import TFPolicyGraph, \
@@ -136,8 +136,10 @@ class PPOPolicyGraphICM(LearningRateSchedule, TFPolicyGraph):
 
         if existing_inputs:
             obs_ph, value_targets_ph, adv_ph, act_ph, \
-                logits_ph, vf_preds_ph = existing_inputs[:6]
-            existing_state_in = existing_inputs[6:-1]
+                logits_ph, vf_preds_ph, phi1, phi2, asample = existing_inputs[:9]
+
+            # TODO: updates to account for s1, s2 and asample
+            existing_state_in = existing_inputs[9:-1]
             existing_seq_lens = existing_inputs[-1]
         else:
             obs_ph = tf.placeholder(
@@ -153,9 +155,21 @@ class PPOPolicyGraphICM(LearningRateSchedule, TFPolicyGraph):
                 tf.float32, name="vf_preds", shape=(None, ))
             value_targets_ph = tf.placeholder(
                 tf.float32, name="value_targets", shape=(None, ))
+            phi1 = tf.placeholder(tf.float32, shape=(None, ) + observation_space.shape, name="phi1")
+            phi2 = tf.placeholder(tf.float32, shape=(None, ) + observation_space.shape, name="phi2")
+            asample = tf.placeholder(tf.float32, shape=(None, numaction), name="asample")
+
             existing_state_in = None
             existing_seq_lens = None
         self.observations = obs_ph
+
+
+        if self.unsup:
+            with tf.variable_scope("predictor"):
+                if 'state' in unsupType:
+                    self.local_ap_network = predictor = StatePredictor(phi1, phi2, asample, observation_space, numaction, designHead, unsupType)
+                else:
+                    self.local_ap_network = predictor = StateActionPredictor(phi1, phi2, asample, observation_space, numaction, designHead)
 
         self.model = pi = ModelCatalog.get_model(
             obs_ph,
@@ -164,16 +178,6 @@ class PPOPolicyGraphICM(LearningRateSchedule, TFPolicyGraph):
             state_in=existing_state_in,
             seq_lens=existing_seq_lens)
 
-        if self.unsup:
-            # print("Observations space:", observation_space)
-            print("Observations shape:", tf.shape(self.observations)[0]) # tf.shape(x)[0]
-            print("Observations shape:", self.observations.shape[1:])
-            print("obs_ph shape:", tf.shape(obs_ph)[:1])
-            with tf.variable_scope("predictor"):
-                if 'state' in unsupType:
-                    self.local_ap_network = predictor = StatePredictor(tf.shape(self.observations)[0], numaction, designHead, unsupType)
-                else:
-                    self.local_ap_network = predictor = StateActionPredictor(tf.shape(self.observations)[0], numaction, designHead)
 
         # KL Coefficient
         self.kl_coeff = tf.get_variable(
@@ -235,7 +239,12 @@ class PPOPolicyGraphICM(LearningRateSchedule, TFPolicyGraph):
             ("actions", act_ph),
             ("logits", logits_ph),
             ("vf_preds", vf_preds_ph),
+            ("s1", phi1),
+            ("s2", phi2),
+            ("asample", asample),
         ]
+
+        self.extra_inputs = ["s1","s2","asample"]
 
         # TODO: testing to see if this lets me pass inputs to ICM
         # self.variables = ray.experimental.TensorFlowVariables(self.loss_in, self.sess)
@@ -300,19 +309,20 @@ class PPOPolicyGraphICM(LearningRateSchedule, TFPolicyGraph):
 
     # def extra_compute_grad_feed_dict(self):
     #     feed_dict = {}
-    #     cur_batch = self.get_weights()
+    #     # cur_batch = self.get_weights()
 
-    #     print("In extra_compute_grad_feed_dict: ", cur_batch.count)
+    #     # print("In extra_compute_grad_feed_dict: ", cur_batch.count)
 
-    #     if cur_batch:
-    #         print("Current Batch shape: ", cur_batch.count)
-    #         if self.unsup:
-    #             print("Current Batch obs: ", cur_batch["obs"][0])
-    #             feed_dict[self.local_ap_network.s1] = cur_batch["obs"][:-1]
-    #             feed_dict[self.local_ap_network.s2] = cur_batch["obs"][1:]
+    #     # if cur_batch:
+    #     #     print("Current Batch shape: ", cur_batch.count)
+    #     #     if self.unsup:
+    #     # print("Current Batch obs: ", cur_batch["obs"][0])
 
-    #             one_hot_actions = np.eye(constants['NUM_ACTIONS'])[cur_batch["actions"]]
-    #             feed_dict[self.local_ap_network.asample] = one_hot_actions[:-1]
+    #     feed_dict[self.local_ap_network.s1] = cur_batch["obs"][:-1]
+    #     feed_dict[self.local_ap_network.s2] = cur_batch["obs"][1:]
+
+    #     one_hot_actions = np.eye(constants['NUM_ACTIONS'])[cur_batch["actions"]]
+    #     feed_dict[self.local_ap_network.asample] = one_hot_actions[:-1]
 
     #     # return self.grad_feed_dict
 
@@ -320,14 +330,37 @@ class PPOPolicyGraphICM(LearningRateSchedule, TFPolicyGraph):
 
     def postprocess_trajectory(self, sample_batch, other_agent_batches=None):
 
-        # print("In the postprocess_trajectory method")
-        # print("Sample Batch: ", sample_batch.count)
-        # print("Sample Batch: ", sample_batch["obs"][0])
+        # TODO: test to see whats in the sample_batch
+        # for k,v in sample_batch.items():
+        #     print(k,type(v))
 
-        # if sample_batch.count > 1:
-        #     # self.cur_batch = sample_batch
-        #     # self.set_feed_dict(sample_batch)
-        #     self.set_weights(sample_batch)
+        # collecting target for policy network
+        rewards = np.asarray(sample_batch["rewards"])
+        last_states = np.asarray(sample_batch["obs"])
+        states = np.asarray(sample_batch["new_obs"])
+        actions = np.asarray(sample_batch["actions"])
+        bonuses = []
+
+
+        one_hot_actions = np.eye(constants['NUM_ACTIONS'])[sample_batch["actions"]]
+        one_hot_actions = np.array(one_hot_actions, dtype=np.float32)
+
+        if self.local_ap_network is not None:
+            for i in range(len(rewards)):
+                bonus = self.local_ap_network.pred_bonus(self.sess, last_states[i], states[i], one_hot_actions[i])
+                bonuses.append(bonus)
+                # curr_tuple += [bonus, state]
+                # life_bonus += bonus
+                # ep_bonus += bonus
+
+        if self.unsup:
+            rewards += np.asarray(bonuses)
+
+        sample_batch["rewards"] = rewards
+
+        # if clip:
+        #     rewards = np.clip(rewards, -constants['REWARD_CLIP'], constants['REWARD_CLIP'])
+
 
         completed = sample_batch["dones"][-1]
         if completed:
@@ -389,29 +422,34 @@ class PPOPolicyGraphICM(LearningRateSchedule, TFPolicyGraph):
         feed_dict = {}
 
         # Simple case
+        extra_input_items = {}
         if not self.model.state_in:
             for k, ph in self.loss_in:
+                if k in self.extra_inputs:
+                    extra_input_items[k] = ph
+                    continue
                 feed_dict[ph] = batch[k]
 
             # if self.unsup:
-            print("Current Batch obs: ", batch["obs"][0])
-            print("Current Batch s1 len: ", len(batch["obs"][:-1]))
-            print("Current Batch s2 len: ", len(batch["obs"][1:]))
-            print("Current Batch type: ", type(batch["obs"]))
+            # print("Current Batch obs: ", batch["obs"][0])
+            # print("Current Batch s1 len: ", len(batch["obs"][:-1]))
+            # print("Current Batch s2 len: ", len(batch["obs"][1:]))
+            # print("Current Batch type: ", type(batch["obs"]))
             
-            feed_dict[self.local_ap_network.s1] = batch["obs"][:-1]
-            feed_dict[self.local_ap_network.s2] = batch["obs"][1:]
+            feed_dict[extra_input_items["s1"]] = batch["obs"][:-1]
+            feed_dict[extra_input_items["s2"]] = batch["obs"][1:]
 
             one_hot_actions = np.eye(constants['NUM_ACTIONS'])[batch["actions"]]
-            print("Current Batch asample len: ", len(one_hot_actions[:-1]))
-            print("Some one hot Actions: ", one_hot_actions[1:5])
+            # print("Current Batch asample len: ", len(one_hot_actions[:-1]))
+            # print("Some one hot Actions: ", one_hot_actions[1:5])
             
-            one_hot_actions = np.float32(one_hot_actions)
+            # one_hot_actions = np.float32(one_hot_actions)
+            one_hot_actions = np.array(one_hot_actions, dtype=np.float32)
 
-            print("Some one hot Actions type: ", type(one_hot_actions))
-            feed_dict[self.local_ap_network.asample] = list(one_hot_actions[:-1])
+            # print("Some one hot Actions type: ", type(one_hot_actions))
+            feed_dict[extra_input_items["asample"]] = one_hot_actions[:-1]
 
-            print("_get_loss_inputs_dict NON RNN feed_dict")
+            # print("_get_loss_inputs_dict NON RNN feed_dict")
             return feed_dict
 
         # RNN case
@@ -427,7 +465,7 @@ class PPOPolicyGraphICM(LearningRateSchedule, TFPolicyGraph):
         for k, v in zip(state_keys, initial_states):
             feed_dict[self._loss_input_dict[k]] = v
         feed_dict[self._seq_lens] = seq_lens
-        print("_get_loss_inputs_dict RNN feed_dict")
+        # print("_get_loss_inputs_dict RNN feed_dict")
         return feed_dict
 
     # def set_weights(self, weights):

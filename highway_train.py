@@ -30,11 +30,11 @@ from ray.rllib.agents.agent import get_agent_class
 from ray.rllib.agents.dqn.common.wrappers import wrap_dqn
 from ray.rllib.models import ModelCatalog, Model
 from ray.rllib.models.misc import normc_initializer, get_activation_fn
-from gym_highway.envs.model import FCPolicy
+from gym_highway.models.model import FCPolicy
 
 # ICM models
-from gym_highway.envs.a3c_icm import A3CAgentICM
-from gym_highway.envs.ppo_icm import PPOAgentICM
+# from gym_highway.models.a3c_icm import A3CAgentICM
+from gym_highway.models.ppo_icm import PPOAgentICM
 
 
 class CustomFCModel(Model):

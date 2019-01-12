@@ -245,16 +245,20 @@ class LSTMPolicy(object):
 
 
 class StateActionPredictor(object):
-    def __init__(self, ob_space, ac_space, designHead='universe'):
+    def __init__(self, phi1_m, phi2_m, asample_m, ob_space, ac_space, designHead='universe'):
         # input: s1,s2: : [None, h, w, ch] (usually ch=1 or 4)
         # asample: 1-hot encoding of sampled action from policy: [None, ac_space]
         # input_shape = [None] + list(ob_space)
         input_shape = (None,) + (16,)
         # self.s1 = phi1 = tf.placeholder(tf.float32, input_shape)
         # self.s2 = phi2 = tf.placeholder(tf.float32, input_shape)
-        self.s1 = phi1 = tf.placeholder(tf.float32, shape=input_shape, name="phi1")
-        self.s2 = phi2 = tf.placeholder(tf.float32, shape=input_shape, name="phi2")
-        self.asample = asample = tf.placeholder(tf.float32, shape=(None, ac_space), name="asample")
+        # self.s1 = phi1 = tf.placeholder(tf.float32, shape=input_shape, name="phi1")
+        # self.s2 = phi2 = tf.placeholder(tf.float32, shape=input_shape, name="phi2")
+        # self.asample = asample = tf.placeholder(tf.float32, shape=(None, ac_space), name="asample")
+        
+        self.s1 = phi1 = phi1_m
+        self.s2 = phi2 = phi2_m
+        self.asample = asample = asample_m
 
         # feature encoding: phi1, phi2: [None, LEN]
         size = 256
@@ -302,13 +306,13 @@ class StateActionPredictor(object):
         sess = tf.get_default_session()
         return sess.run(self.ainvprobs, {self.s1: [s1], self.s2: [s2]})[0, :]
 
-    def pred_bonus(self, s1, s2, asample):
+    def pred_bonus(self, sess, s1, s2, asample):
         '''
         returns bonus predicted by forward model
             input: s1,s2: [h, w, ch], asample: [ac_space] 1-hot encoding
             output: scalar bonus
         '''
-        sess = tf.get_default_session()
+        # sess = tf.get_default_session()
         # error = sess.run([self.forwardloss, self.invloss],
         #     {self.s1: [s1], self.s2: [s2], self.asample: [asample]})
         # print('ErrorF: ', error[0], ' ErrorI:', error[1])
@@ -325,14 +329,19 @@ class StatePredictor(object):
     and neither across batches.
     '''
 
-    def __init__(self, ob_space, ac_space, designHead='universe', unsupType='state'):
+    def __init__(self, phi1_m, phi2_m, asample_m, ob_space, ac_space, designHead='universe', unsupType='state'):
         # input: s1,s2: : [None, h, w, ch] (usually ch=1 or 4)
         # asample: 1-hot encoding of sampled action from policy: [None, ac_space]
         # input_shape = [None] + list(ob_space)
         input_shape = (None,) + (16,)
-        self.s1 = phi1 = tf.placeholder(tf.float32, shape=input_shape, name="phi1")
-        self.s2 = phi2 = tf.placeholder(tf.float32, shape=input_shape, name="phi2")
-        self.asample = asample = tf.placeholder(tf.float32, shape=(None, ac_space), name="asample")
+        # self.s1 = phi1 = tf.placeholder(tf.float32, shape=input_shape, name="phi1")
+        # self.s2 = phi2 = tf.placeholder(tf.float32, shape=input_shape, name="phi2")
+        # self.asample = asample = tf.placeholder(tf.float32, shape=(None, ac_space), name="asample")
+
+        self.s1 = phi1 = phi1_m
+        self.s2 = phi2 = phi2_m
+        self.asample = asample = asample_m
+
         self.stateAenc = unsupType == 'stateAenc'
 
         # feature encoding: phi1: [None, LEN]
@@ -380,13 +389,13 @@ class StatePredictor(object):
         return sess.run(self.predstate, {self.s1: [s1],
                                             self.asample: [asample]})[0, :]
 
-    def pred_bonus(self, s1, s2, asample):
+    def pred_bonus(self, sess, s1, s2, asample):
         '''
         returns bonus predicted by forward model
             input: s1,s2: [h, w, ch], asample: [ac_space] 1-hot encoding
             output: scalar bonus
         '''
-        sess = tf.get_default_session()
+        # sess = tf.get_default_session()
         bonus = self.aencBonus if self.stateAenc else self.forwardloss
         error = sess.run(bonus,
             {self.s1: [s1], self.s2: [s2], self.asample: [asample]})

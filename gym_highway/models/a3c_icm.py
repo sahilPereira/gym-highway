@@ -4,7 +4,7 @@ from __future__ import print_function
 
 import time
 
-from gym_highway.envs.a3c_policy_graph_icm import A3CPolicyGraphICM
+from gym_highway.models.a3c_policy_graph_icm import A3CPolicyGraphICM
 # from ray.rllib.agents.a3c.a3c_tf_policy_graph import A3CPolicyGraph
 from ray.rllib.agents.a3c.a3c import A3CAgent, DEFAULT_CONFIG
 from ray.rllib.agents.agent import Agent
