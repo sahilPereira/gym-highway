@@ -7,9 +7,12 @@ import numpy as np
 from argparse import ArgumentParser
 from collections import defaultdict
 from importlib import import_module
+import datetime
+import random, string
 
 # imports from baselines.run
 import gym
+from gym.envs.registration import register
 import gym_highway
 from gym_highway.envs import HighwayEnv
 
@@ -29,6 +32,7 @@ except ImportError:
     MPI = None
 
 _game_envs = defaultdict(set)
+
 
 def train(args, extra_args):
     env_type, env_id = get_env_type(args.env)
@@ -61,7 +65,6 @@ def train(args, extra_args):
         total_timesteps=total_timesteps,
         **alg_kwargs
     )
-
     return model, env
 
 def build_env(args):
@@ -82,7 +85,6 @@ def build_env(args):
             frame_stack_size = 4
             env = make_vec_env(env_id, env_type, nenv, seed, gamestate=args.gamestate, reward_scale=args.reward_scale)
             env = VecFrameStack(env, frame_stack_size)
-
     else:
        config = tf.ConfigProto(allow_soft_placement=True,
                                intra_op_parallelism_threads=1,
@@ -91,7 +93,7 @@ def build_env(args):
        get_session(config=config)
 
        flatten_dict_observations = alg not in {'her'}
-       env = make_vec_env(env_id, env_type, args.num_env or 1, seed, reward_scale=args.reward_scale, flatten_dict_observations=flatten_dict_observations)
+       env = make_vec_env(env_id, env_type, nenv, seed, reward_scale=args.reward_scale, flatten_dict_observations=flatten_dict_observations)
 
        if env_type == 'mujoco':
            env = VecNormalize(env)
@@ -105,12 +107,9 @@ def get_env_type(env_id):
         env_type = env._entry_point.split(':')[0].split('.')[-1]
         _game_envs[env_type].add(env.id)  # This is a set so add is idempotent
 
-    # print("Game envs: \n", _game_envs)
-
     if env_id in _game_envs.keys():
         env_type = env_id
         env_id = [g for g in _game_envs[env_type]][0]
-        print("env_id in _game_envs keys: %s, %s"%(env_id, env_type))
     else:
         env_type = None
         for g, e in _game_envs.items():
@@ -118,7 +117,6 @@ def get_env_type(env_id):
                 env_type = g
                 break
         assert env_type is not None, 'env_id {} is not recognized in env types'.format(env_id, _game_envs.keys())
-        print("env_id NOT in _game_envs keys: %s, %s"%(env_id, env_type))
 
     return env_type, env_id
 
@@ -153,7 +151,8 @@ def get_learn_function_defaults(alg, env_type):
         kwargs = {}
     return kwargs
 
-
+def register_env(c_id, c_entry_point, c_kwargs):
+    register( id=c_id, entry_point=c_entry_point, kwargs=c_kwargs)
 
 def parse_cmdline_kwargs(args):
     '''
@@ -169,6 +168,23 @@ def parse_cmdline_kwargs(args):
 
     return {k: parse(v) for k,v in parse_unknown_args(args).items()}
 
+def id_generator(size=10, chars=string.ascii_lowercase + string.digits):
+    return ''.join(random.choice(chars) for _ in range(size))
+
+def create_results_dir(args):
+    current_time = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M")
+    new_run_dir = "{}_{}_{}_{}".format(args.alg, args.env, current_time, id_generator())
+
+    results_dir = "{}/{}".format(Config.results_dir, new_run_dir)
+    results_dir = osp.expanduser(results_dir)
+    if not os.path.exists(results_dir):
+        try:
+            os.makedirs(results_dir, exist_ok=True)
+        except OSError as e:
+            if e.errno != errno.EEXIST:
+                raise
+    return results_dir
+
 def arg_parser():
     """
     Create an empty argparse.ArgumentParser.
@@ -178,15 +194,16 @@ def arg_parser():
 
 def custom_arg_parser():
     parser = arg_parser()
-    parser.add_argument('--env', help='environment ID', type=str, default='Highway-v0')
+    parser.add_argument('--env', help='environment ID', type=str, default=Config.env_id)
     parser.add_argument('--seed', help='RNG seed', type=int, default=None)
     parser.add_argument('--alg', help='Algorithm', type=str, default='ppo2')
     parser.add_argument('--num_timesteps', type=float, default=1e6),
     parser.add_argument('--network', help='network type (mlp, cnn, lstm, cnn_lstm, conv_only)', default=None)
     parser.add_argument('--gamestate', help='game state to load (so far only used in retro games)', default=None)
-    parser.add_argument('--num_env', help='Number of environment copies being run in parallel. When not specified, set to number of cpus for Atari, and to 1 for Mujoco', default=None, type=int)
+    parser.add_argument('--num_env', help='Number of environment copies being run in parallel', default=Config.num_workers, type=int)
     parser.add_argument('--reward_scale', help='Reward scale factor. Default: 1.0', default=1.0, type=float)
     parser.add_argument('--save_path', help='Path to save trained model to', default=None, type=str)
+    parser.add_argument('--save_model', default=True, action='store_false')
     parser.add_argument('--save_video_interval', help='Save video every x steps (0 = disabled)', default=0, type=int)
     parser.add_argument('--save_video_length', help='Length of recorded video. Default: 200', default=200, type=int)
     parser.add_argument('--play', default=False, action='store_true')
@@ -197,20 +214,36 @@ def main(args):
 
     arg_parser = custom_arg_parser()
     args, unknown_args = arg_parser.parse_known_args(args)
-    extra_args = parse_cmdline_kwargs(unknown_args)
+    
+    # add custom training arguments for ppo2 algorithm
+    extra_args = Config.ppo2_train_args
+
+    # update extra_args with command line argument overrides
+    extra_args.update(parse_cmdline_kwargs(unknown_args))
+
+    # create a separate result dir for each run
+    results_dir = create_results_dir(args)
 
     if MPI is None or MPI.COMM_WORLD.Get_rank() == 0:
         rank = 0
-        logger.configure()
+        # logger.configure()
+        logger.configure(dir=results_dir, format_strs=Config.baselines_log_format)
     else:
-        logger.configure(format_strs=[])
+        # logger.configure(format_strs=[])
+        logger.configure(dir=results_dir, format_strs=Config.baselines_log_format)
         rank = MPI.COMM_WORLD.Get_rank()
+
+    if args.play:
+        register_env(Config.env_id, Config.env_entry_point, Config.env_play_kwargs)
+    else:
+        register_env(Config.env_id, Config.env_entry_point, Config.env_train_kwargs)
 
     model, env = train(args, extra_args)
     env.close()
 
-    if args.save_path is not None and rank == 0:
-        save_path = osp.expanduser(args.save_path)
+    if args.save_model and rank == 0:
+        save_path = "{}/checkpoints-final".format(results_dir)
+        # save_path = osp.expanduser(args.save_path)
         model.save(save_path)
 
     if args.play:
@@ -228,7 +261,9 @@ def main(args):
                 actions, _, _, _ = model.step(obs)
 
             obs, _, done, _ = env.step(actions)
-            env.render()
+            
+            # Not required since the gym highway environment renders based on init param
+            # env.render()
             done = done.any() if isinstance(done, np.ndarray) else done
 
             if done:

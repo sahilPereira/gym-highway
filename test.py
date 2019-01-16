@@ -8,6 +8,8 @@ import pygame
 from pygame.math import Vector2
 import numpy as np
 
+import os.path as osp
+
 
 class RandomAgent(object):
     """The world's simplest agent!"""
@@ -67,4 +69,8 @@ if __name__ == '__main__':
     # myRoundedList = [ round(elem, 2) for elem in myList ]
     # print(myRoundedList)
 
+    # file_path = "~/baselines/test1/"
+    # save_path = osp.expanduser(file_path)
+    # print(save_path)
+    
     main()
