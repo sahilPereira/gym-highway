@@ -134,7 +134,7 @@ def get_env_type(env_id):
             if env_id in e:
                 env_type = g
                 break
-        assert env_type is not None, 'env_id {} is not recognized in env types'.format(env_id, _game_envs.keys())
+        assert env_type is not None, 'env_id {} is not recognized in env types {}'.format(env_id, _game_envs.keys())
 
     return env_type, env_id
 

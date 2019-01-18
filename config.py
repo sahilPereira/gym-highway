@@ -25,7 +25,12 @@ ppo2_train_args = {'nsteps':214,  # 1284 num_batches / 6 num_envs
 				   'cliprange':0.2,
 				   'save_interval':10, 
 				   'load_path':None, 
-				   'model_fn':None
+				   'model_fn':None,
+				   # policy network_kwargs
+				   'num_layers':3, 
+				   'num_hidden':256, 
+				   'activation':'relu', 
+				   'layer_norm':False
 				   }
 
 # Whether to place workers on GPUs (only for A3C)

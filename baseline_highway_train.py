@@ -9,6 +9,7 @@ from collections import defaultdict
 from importlib import import_module
 import datetime
 import random, string
+import errno
 
 # imports from baselines.run
 import gym
@@ -86,17 +87,18 @@ def build_env(args):
             env = make_vec_env(env_id, env_type, nenv, seed, gamestate=args.gamestate, reward_scale=args.reward_scale)
             env = VecFrameStack(env, frame_stack_size)
     else:
-       config = tf.ConfigProto(allow_soft_placement=True,
+        config = tf.ConfigProto(allow_soft_placement=True,
                                intra_op_parallelism_threads=1,
                                inter_op_parallelism_threads=1)
-       config.gpu_options.allow_growth = True
-       get_session(config=config)
+        
+        config.gpu_options.allow_growth = True
+        get_session(config=config)
 
-       flatten_dict_observations = alg not in {'her'}
-       env = make_vec_env(env_id, env_type, nenv, seed, reward_scale=args.reward_scale, flatten_dict_observations=flatten_dict_observations)
+        flatten_dict_observations = alg not in {'her'}
+        env = make_vec_env(env_id, env_type, nenv, seed, reward_scale=args.reward_scale, flatten_dict_observations=flatten_dict_observations)
 
-       if env_type == 'mujoco':
-           env = VecNormalize(env)
+        if env_type == 'mujoco':
+            env = VecNormalize(env)
 
     return env
 
@@ -116,7 +118,7 @@ def get_env_type(env_id):
             if env_id in e:
                 env_type = g
                 break
-        assert env_type is not None, 'env_id {} is not recognized in env types'.format(env_id, _game_envs.keys())
+        assert env_type is not None, 'env_id {} is not recognized in env types {}'.format(env_id, _game_envs.keys())
 
     return env_type, env_id
 
@@ -151,7 +153,25 @@ def get_learn_function_defaults(alg, env_type):
         kwargs = {}
     return kwargs
 
+def activation_str_function(extra_args):
+    '''
+    Convert string activation into actual tf activation function
+    '''
+    activation_arg = extra_args['activation']
+    if activation_arg == "relu":
+        extra_args['activation'] = tf.nn.relu
+    elif activation_arg == "tanh":
+        extra_args['activation'] = tf.tanh
+    elif activation_arg == "elu":
+        extra_args['activation'] = tf.nn.elu
+    else:
+        extra_args['activation'] = tf.nn.sigmoid
+    return extra_args
+
 def register_env(c_id, c_entry_point, c_kwargs):
+    '''
+    Register a gym environment with new id, entry point and kwargs
+    '''
     register( id=c_id, entry_point=c_entry_point, kwargs=c_kwargs)
 
 def parse_cmdline_kwargs(args):
@@ -217,6 +237,7 @@ def main(args):
     
     # add custom training arguments for ppo2 algorithm
     extra_args = Config.ppo2_train_args
+    extra_args = activation_str_function(extra_args)
 
     # update extra_args with command line argument overrides
     extra_args.update(parse_cmdline_kwargs(unknown_args))
