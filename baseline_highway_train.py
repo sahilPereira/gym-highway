@@ -25,7 +25,7 @@ from baselines import logger
 from baselines.common.vec_env.vec_normalize import VecNormalize
 
 import tensorflow as tf
-import config as Config
+from models import config as Config
 
 try:
     from mpi4py import MPI
@@ -263,7 +263,7 @@ def main(args):
     env.close()
 
     if args.save_model and rank == 0:
-        save_path = "{}/checkpoints-final".format(results_dir)
+        save_path = "{}/checkpoints/checkpoints-final".format(results_dir)
         # save_path = osp.expanduser(args.save_path)
         model.save(save_path)
 

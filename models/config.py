@@ -2,6 +2,7 @@
 num_workers = 6
 num_envs_per_worker = 1
 num_gpus = 1
+num_timesteps = 2e6
 
 # training config
 sample_batch_size = 64 # Size of batches collected from each worker
@@ -12,18 +13,18 @@ use_lstm = False
 episodes = 2000
 initial_reward = -140.0
 lr = 1e-4
-ppo2_train_args = {'nsteps':214,  # 1284 num_batches / 6 num_envs
+ppo2_train_args = {'nsteps':1280, #240,  1440 num_batches / 6 num_envs
 				   'ent_coef':0.1, 
 				   'lr':1e-4,
 				   'vf_coef':0.5, 
 				   'max_grad_norm':0.5, 
 				   'gamma':0.99, 
 				   'lam':0.95,
-				   'log_interval':1, # there are ~ 778 updates for 1M timesteps
-				   'nminibatches':4, # nbatch_train = nbatch // nminibatches = 1284//4 ~= 321
-				   'noptepochs':5, 
+				   'log_interval':1, # there are ~ 694 updates for 1M timesteps
+				   'nminibatches':6, # nbatch_train = nbatch // nminibatches = 1440//4 = 360
+				   'noptepochs':1, # reduce epochs so that we dont use same old data to train model
 				   'cliprange':0.2,
-				   'save_interval':10, 
+				   'save_interval':100, 
 				   'load_path':None, 
 				   'model_fn':None,
 				   # policy network_kwargs
@@ -50,3 +51,5 @@ save_path = '~/gym_highway_results/ppo2_test1'
 
 # logging
 baselines_log_format = ['stdout','tensorboard']
+tensorboard_rootdir = 'gym_highway/tb/'
+tensorboard_save_graph = True

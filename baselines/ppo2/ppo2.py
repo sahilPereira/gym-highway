@@ -12,6 +12,8 @@ except ImportError:
     MPI = None
 from baselines.ppo2.runner import Runner
 
+from models import config as Config
+from baselines.common.tf_util import get_session
 
 def constfn(val):
     def f(_):
@@ -118,6 +120,9 @@ def learn(*, network, env, total_timesteps, eval_env = None, seed=None, nsteps=2
     if eval_env is not None:
         eval_epinfobuf = deque(maxlen=100)
 
+    # Save network graph if specified in config file
+    save_graph()
+
     # Start total timer
     tfirststart = time.time()
 
@@ -181,19 +186,19 @@ def learn(*, network, env, total_timesteps, eval_env = None, seed=None, nsteps=2
             # Calculates if value function is a good predicator of the returns (ev > 1)
             # or if it's just worse than predicting nothing (ev =< 0)
             ev = explained_variance(values, returns)
-            logger.logkv("serial_timesteps", update*nsteps)
-            logger.logkv("num_update", update)
-            logger.logkv("total_timesteps", update*nbatch)
-            logger.logkv("fps", fps)
-            logger.logkv("explained_variance", float(ev))
-            logger.logkv('ep_reward_mean', safemean([epinfo['r'] for epinfo in epinfobuf]))
-            logger.logkv('ep_length_mean', safemean([epinfo['l'] for epinfo in epinfobuf]))
+            logger.logkv(Config.tensorboard_rootdir+"serial_timesteps", update*nsteps)
+            logger.logkv(Config.tensorboard_rootdir+"num_update", update)
+            logger.logkv(Config.tensorboard_rootdir+"total_timesteps", update*nbatch)
+            logger.logkv(Config.tensorboard_rootdir+"fps", fps)
+            logger.logkv(Config.tensorboard_rootdir+"explained_variance", float(ev))
+            logger.logkv(Config.tensorboard_rootdir+'ep_reward_mean', safemean([epinfo['r'] for epinfo in epinfobuf]))
+            logger.logkv(Config.tensorboard_rootdir+'ep_length_mean', safemean([epinfo['l'] for epinfo in epinfobuf]))
             if eval_env is not None:
-                logger.logkv('eval_eprewmean', safemean([epinfo['r'] for epinfo in eval_epinfobuf]) )
-                logger.logkv('eval_eplenmean', safemean([epinfo['l'] for epinfo in eval_epinfobuf]) )
-            logger.logkv('time_elapsed', tnow - tfirststart)
+                logger.logkv(Config.tensorboard_rootdir+'eval_eprewmean', safemean([epinfo['r'] for epinfo in eval_epinfobuf]) )
+                logger.logkv(Config.tensorboard_rootdir+'eval_eplenmean', safemean([epinfo['l'] for epinfo in eval_epinfobuf]) )
+            logger.logkv(Config.tensorboard_rootdir+'time_elapsed', tnow - tfirststart)
             for (lossval, lossname) in zip(lossvals, model.loss_names):
-                logger.logkv(lossname, lossval)
+                logger.logkv(Config.tensorboard_rootdir+lossname, lossval)
             if MPI is None or MPI.COMM_WORLD.Get_rank() == 0:
                 logger.dumpkvs()
         if save_interval and (update % save_interval == 0 or update == 1) and logger.get_dir() and (MPI is None or MPI.COMM_WORLD.Get_rank() == 0):
@@ -207,5 +212,13 @@ def learn(*, network, env, total_timesteps, eval_env = None, seed=None, nsteps=2
 def safemean(xs):
     return np.nan if len(xs) == 0 else np.mean(xs)
 
+def save_graph():
+    if not Config.tensorboard_save_graph:
+        return False
+    import tensorflow as tf
+    sess = get_session()
+    writer = tf.summary.FileWriter(logger.get_dir(), sess.graph)
+    writer.close()
+    return True
 
 

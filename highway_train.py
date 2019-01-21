@@ -19,7 +19,8 @@ from ray.tune.registry import register_env
 # from ray.rllib.agents.ppo.ppo_policy_graph import PPOPolicyGraph
 from ray.rllib.agents.a3c.a3c import A3CAgent
 from ray.rllib.agents.ppo import PPOAgent
-import config as Config
+# import config as Config
+from models import config as Config
 
 import json
 import os
