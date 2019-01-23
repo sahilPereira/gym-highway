@@ -13,17 +13,17 @@ use_lstm = False
 episodes = 2000
 initial_reward = -140.0
 lr = 1e-4
-ppo2_train_args = {'nsteps':1280, #240,  1440 num_batches / 6 num_envs
-				   'ent_coef':0.1, 
+ppo2_train_args = {'nsteps':240, #240,  1440 num_batches / 6 num_envs
+				   'ent_coef':0.01, # NOTE: entropy regurarlization constant, this should range between 0-0.01 
 				   'lr':1e-4,
-				   'vf_coef':0.5, 
-				   'max_grad_norm':0.5, 
+				   'vf_coef':0.5, # NOTE: this was set to 1 in ray, but since vf loss is high, keep it at 0.5
+				   'max_grad_norm': 60.0, # 0.5, # NOTE: should really increase this, since the grads are being clipped at 0.5
 				   'gamma':0.99, 
-				   'lam':0.95,
+				   'lam':1.0, # 0.95, # NOTE: this was set to 1 in ray
 				   'log_interval':1, # there are ~ 694 updates for 1M timesteps
 				   'nminibatches':6, # nbatch_train = nbatch // nminibatches = 1440//4 = 360
 				   'noptepochs':1, # reduce epochs so that we dont use same old data to train model
-				   'cliprange':0.2,
+				   'cliprange':0.2, # NOTE: ray default 0.2. Ray: [vf_clip_param, clip_param], baselines: [clip_param]
 				   'save_interval':100, 
 				   'load_path':None, 
 				   'model_fn':None,
