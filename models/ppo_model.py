@@ -143,8 +143,8 @@ class Model(object):
             predgrads_and_var = list(zip(predgrads, predictor.var_list))
             grads_and_var = grads_and_var + predgrads_and_var
         
-        # unzip the grads and var after adding predictor grads/vars
-        grads, var = zip(*grads_and_var)
+            # unzip the grads and var after adding predictor grads/vars
+            grads, var = zip(*grads_and_var)
 
         self.grads = grads
         self.var = var

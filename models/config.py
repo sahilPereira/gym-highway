@@ -4,7 +4,7 @@ num_envs_per_worker = 1
 num_gpus = 1
 num_timesteps = 2e6
 
-# training config
+# ray training config
 sample_batch_size = 64 # Size of batches collected from each worker
 train_batch_size = 1280 # Number of timesteps collected for each SGD round
 sgd_minibatch_size = 128 # Total SGD batch size across all devices for SGD
@@ -13,6 +13,8 @@ use_lstm = False
 episodes = 2000
 initial_reward = -140.0
 lr = 1e-4
+
+# baselines ppo2 training config
 ppo2_train_args = {'nsteps':240, #240,  1440 num_batches / 6 num_envs
 				   'ent_coef':0.01, # NOTE: entropy regurarlization constant, this should range between 0-0.01 
 				   'lr':1e-4,
@@ -36,6 +38,9 @@ ppo2_train_args = {'nsteps':240, #240,  1440 num_batches / 6 num_envs
 
 # Whether to place workers on GPUs (only for A3C)
 use_gpu_for_workers = False
+
+# intrinsic curiosity module parameters
+use_icm = False
 
 # policy network
 fcnet_hiddens = [256, 256, 256]
