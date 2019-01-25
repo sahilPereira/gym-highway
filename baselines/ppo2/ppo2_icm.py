@@ -12,7 +12,7 @@ except ImportError:
     MPI = None
 from baselines.ppo2.runner import Runner
 
-from models import config as Config
+import models.config as Config
 from baselines.common.tf_util import get_session
 
 def constfn(val):
@@ -23,7 +23,7 @@ def constfn(val):
 def learn(*, network, env, total_timesteps, eval_env = None, seed=None, nsteps=2048, ent_coef=0.0, lr=3e-4,
             vf_coef=0.5,  max_grad_norm=0.5, gamma=0.99, lam=0.95,
             log_interval=10, nminibatches=4, noptepochs=4, cliprange=0.2,
-            save_interval=0, load_path=None, model_fn=None, **network_kwargs):
+            save_interval=0, use_icm=False, load_path=None, model_fn=None, **network_kwargs):
     '''
     Learn policy using PPO algorithm (https://arxiv.org/abs/1707.06347)
 
@@ -147,7 +147,7 @@ def learn(*, network, env, total_timesteps, eval_env = None, seed=None, nsteps=2
 
         # Here what we're going to do is for each minibatch calculate the loss and append it.
         mblossvals = []
-        if states is None: # nonrecurrent version
+        if states is None and not use_icm: # nonrecurrent version
             # Index of each element of batch_size
             # Create the indices array
             inds = np.arange(nbatch)
@@ -160,7 +160,7 @@ def learn(*, network, env, total_timesteps, eval_env = None, seed=None, nsteps=2
                     mbinds = inds[start:end]
                     slices = (arr[mbinds] for arr in (obs, returns, masks, actions, values, neglogpacs))
                     mblossvals.append(model.train(lrnow, cliprangenow, *slices))
-        else: # recurrent version
+        else: # recurrent and icm version
             assert nenvs % nminibatches == 0
             envsperbatch = nenvs // nminibatches
             envinds = np.arange(nenvs)
@@ -173,8 +173,13 @@ def learn(*, network, env, total_timesteps, eval_env = None, seed=None, nsteps=2
                     mbenvinds = envinds[start:end]
                     mbflatinds = flatinds[mbenvinds].ravel()
                     slices = (arr[mbflatinds] for arr in (obs, returns, masks, actions, values, neglogpacs))
-                    mbstates = states[mbenvinds]
-                    mblossvals.append(model.train(lrnow, cliprangenow, *slices, mbstates))
+
+                    # if using icm, dont shuffle samples and done use states info
+                    if use_icm:
+                        mblossvals.append(model.train(lrnow, cliprangenow, *slices))
+                    else:
+                        mbstates = states[mbenvinds]
+                        mblossvals.append(model.train(lrnow, cliprangenow, *slices, mbstates))
 
         # Feedforward --> get losses --> update
         lossvals = np.mean(mblossvals, axis=0)

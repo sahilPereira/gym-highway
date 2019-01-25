@@ -11,9 +11,9 @@ try:
 except ImportError:
     MPI = None
 
-# ICM imports
-from models.model import StateActionPredictor, StatePredictor
-from gym_highway.envs.constants import constants
+# ICM predictor imports
+from models.icm.predictor_models import StateActionPredictor, StatePredictor
+from models.constants import constants
 
 
 class Model(object):
@@ -149,8 +149,8 @@ class Model(object):
         self.grads = grads
         self.var = var
         self._train_op = self.trainer.apply_gradients(grads_and_var)
-        self.loss_names = ['policy_loss', 'value_loss', 'policy_entropy', 'approxkl', 'clipfrac']
-        self.stats_list = [pg_loss, vf_loss, entropy, approxkl, clipfrac]
+        self.loss_names = ['policy_loss', 'value_loss', 'policy_entropy', 'approxkl', 'clipfrac', 'predloss', 'pred_forwardloss', 'pred_invloss']
+        self.stats_list = [pg_loss, vf_loss, entropy, approxkl, clipfrac, predloss, predictor.forwardloss, predictor.invloss]
 
 
         self.train_model = train_model

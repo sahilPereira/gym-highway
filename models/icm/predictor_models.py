@@ -4,6 +4,9 @@ import tensorflow as tf
 import tensorflow.contrib.rnn as rnn
 from models.constants import constants
 
+from baselines.common.models import get_network_builder
+import models.config as Config
+
 def normalized_columns_initializer(std=1.0):
     def _initializer(shape, dtype=None, partition_info=None):
         out = np.random.randn(*shape).astype(np.float32)
@@ -164,11 +167,8 @@ def doomHead(x):
 
 def deepFCHead(x):
     print("Using Deep FC head")
-    x = tf.nn.relu(linear(x, 256, "l1", normalized_columns_initializer(0.01)))
-    # x = tf.nn.relu(linear(x, 256, "l2", normalized_columns_initializer(0.01)))
-    x = flatten(x)
-    x = tf.nn.relu(linear(x, 256, "fc", normalized_columns_initializer(0.01)))
-    return x
+    features_ntw = get_network_builder(Config.icm_feature_model)(**Config.icm_feature_model_params)
+    return features_ntw(x)
 
 
 class LSTMPolicy(object):
@@ -268,12 +268,13 @@ class StateActionPredictor(object):
             with tf.variable_scope(tf.get_variable_scope(), reuse=True):
                 phi2 = universeHead(phi2, nConvs=2)
         else:
-            phi1 = universeHead(phi1)
+            # default changed to use fully connected layer
+            phi1 = deepFCHead(phi1)
             with tf.variable_scope(tf.get_variable_scope(), reuse=True):
-                phi2 = universeHead(phi2)
+                phi2 = deepFCHead(phi2)
 
         # inverse model: g(phi1,phi2) -> a_inv: [None, ac_space]
-        g = tf.concat(1,[phi1, phi2])
+        g = tf.concat([phi1, phi2], 1)
         g = tf.nn.relu(linear(g, size, "g1", normalized_columns_initializer(0.01)))
         aindex = tf.argmax(asample, axis=1)  # aindex: [batch_size,]
         logits = linear(g, ac_space, "glast", normalized_columns_initializer(0.01))
@@ -283,13 +284,13 @@ class StateActionPredictor(object):
 
         # forward model: f(phi1,asample) -> phi2
         # Note: no backprop to asample of policy: it is treated as fixed for predictor training
-        f = tf.concat(1, [phi1, asample])
+        f = tf.concat([phi1, asample], 1)
         f = tf.nn.relu(linear(f, size, "f1", normalized_columns_initializer(0.01)))
         f = linear(f, phi1.get_shape()[1].value, "flast", normalized_columns_initializer(0.01))
         self.forwardloss = 0.5 * tf.reduce_mean(tf.square(tf.subtract(f, phi2)), name='forwardloss')
         # self.forwardloss = 0.5 * tf.reduce_mean(tf.sqrt(tf.abs(tf.subtract(f, phi2))), name='forwardloss')
         # self.forwardloss = cosineLoss(f, phi2, name='forwardloss')
-        self.forwardloss = self.forwardloss * 288.0  # lenFeatures=288. Factored out to make hyperparams not depend on it.
+        self.forwardloss = self.forwardloss * 256.0  # lenFeatures=size. Factored out to make hyperparams not depend on it.
 
         # variable list
         self.var_list = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, tf.get_variable_scope().name)
@@ -319,6 +320,9 @@ class StateActionPredictor(object):
         return error
 
 
+'''
+Do not use this predictor for gym_highway
+'''
 class StatePredictor(object):
     '''
     Loss is normalized across spatial dimension (42x42), but not across batches.
@@ -352,7 +356,7 @@ class StatePredictor(object):
 
         # forward model: f(phi1,asample) -> phi2
         # Note: no backprop to asample of policy: it is treated as fixed for predictor training
-        f = tf.concat(1, [phi1, asample])
+        f = tf.concat([phi1, asample], 1)
         f = tf.nn.relu(linear(f, phi1.get_shape()[1].value, "f1", normalized_columns_initializer(0.01)))
         if 'tile' in designHead:
             f = inverseUniverseHead(f, input_shape, nConvs=2)

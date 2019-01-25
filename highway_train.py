@@ -20,7 +20,7 @@ from ray.tune.registry import register_env
 from ray.rllib.agents.a3c.a3c import A3CAgent
 from ray.rllib.agents.ppo import PPOAgent
 # import config as Config
-from models import config as Config
+import models.config as Config
 
 import json
 import os
