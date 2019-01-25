@@ -52,9 +52,9 @@ class Model(object):
         if self.unsup:
             with tf.variable_scope("predictor", reuse=tf.AUTO_REUSE):
                 if 'state' in unsupType:
-                    predictor = StatePredictor(ob_space.shape, numaction, designHead, unsupType)
+                    self.local_ap_network = predictor = StatePredictor(ob_space.shape, ac_space, designHead, unsupType)
                 else:
-                    predictor = StateActionPredictor(env.observation_space.shape, numaction, designHead)
+                    self.local_ap_network = predictor = StateActionPredictor(ob_space.shape, ac_space, designHead)
 
         # CREATE THE PLACEHOLDERS
         self.A = A = train_model.pdtype.sample_placeholder([None])
@@ -137,21 +137,30 @@ class Model(object):
 
         # clip predictor gradients
         if self.unsup:
-            predgrads, predvar = zip(*predgrads_and_var)
+            predgrads, _ = zip(*predgrads_and_var)
             predgrads, _ = tf.clip_by_global_norm(predgrads, constants['GRAD_NORM_CLIP'])
-
             predgrads_and_var = list(zip(predgrads, predictor.var_list))
+
+            # combine the policy and predictor grads and vars
             grads_and_var = grads_and_var + predgrads_and_var
-        
             # unzip the grads and var after adding predictor grads/vars
             grads, var = zip(*grads_and_var)
+            
+            # normalize gradients for logging
+            predgrad_global_norm = tf.global_norm(predgrads)
+
+        # normalize gradients for logging
+        grad_global_norm = tf.global_norm(grads)
 
         self.grads = grads
         self.var = var
         self._train_op = self.trainer.apply_gradients(grads_and_var)
-        self.loss_names = ['policy_loss', 'value_loss', 'policy_entropy', 'approxkl', 'clipfrac', 'predloss', 'pred_forwardloss', 'pred_invloss']
-        self.stats_list = [pg_loss, vf_loss, entropy, approxkl, clipfrac, predloss, predictor.forwardloss, predictor.invloss]
+        self.loss_names = ['policy_loss', 'value_loss', 'policy_entropy', 'approxkl', 'clipfrac', 'grad_global_norm']
+        self.stats_list = [pg_loss, vf_loss, entropy, approxkl, clipfrac, grad_global_norm]
 
+        if self.unsup:
+            self.loss_names += ['predloss', 'pred_forwardloss', 'pred_invloss', 'predgrad_global_norm']
+            self.stats_list += [predloss, predictor.forwardloss, predictor.invloss, predgrad_global_norm]
 
         self.train_model = train_model
         self.act_model = act_model
@@ -185,6 +194,14 @@ class Model(object):
             self.OLDNEGLOGPAC : neglogpacs,
             self.OLDVPRED : values
         }
+        
+        if self.unsup:
+            # reduce the observations by one since we need one last one for prediction
+            td_map[self.train_model.X] = obs[:-1]
+            td_map[self.local_ap_network.s1] = obs[:-1]
+            td_map[self.local_ap_network.s2] = obs[1:]
+            td_map[self.local_ap_network.asample] = actions
+
         if states is not None:
             td_map[self.train_model.S] = states
             td_map[self.train_model.M] = masks
