@@ -167,6 +167,8 @@ class Model(object):
         self.step = act_model.step
         self.value = act_model.value
         self.initial_state = act_model.initial_state
+        # prediction bonus function for icm
+        self.pred_bonus = predictor.pred_bonus
 
         self.save = functools.partial(save_variables, sess=sess)
         self.load = functools.partial(load_variables, sess=sess)
@@ -198,6 +200,7 @@ class Model(object):
         if self.unsup:
             # reduce the observations by one since we need one last one for prediction
             td_map[self.train_model.X] = obs[:-1]
+            # s1 and s2 are always off by one action
             td_map[self.local_ap_network.s1] = obs[:-1]
             td_map[self.local_ap_network.s2] = obs[1:]
             td_map[self.local_ap_network.asample] = actions

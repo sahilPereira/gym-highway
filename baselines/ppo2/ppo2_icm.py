@@ -23,7 +23,7 @@ def constfn(val):
 def learn(*, network, env, total_timesteps, eval_env = None, seed=None, nsteps=2048, ent_coef=0.0, lr=3e-4,
             vf_coef=0.5,  max_grad_norm=0.5, gamma=0.99, lam=0.95,
             log_interval=10, nminibatches=4, noptepochs=4, cliprange=0.2,
-            save_interval=0, use_icm=False, load_path=None, model_fn=None, **network_kwargs):
+            save_interval=0, save_graph=False, use_icm=False, load_path=None, model_fn=None, **network_kwargs):
     '''
     Learn policy using PPO algorithm (https://arxiv.org/abs/1707.06347)
 
@@ -102,8 +102,13 @@ def learn(*, network, env, total_timesteps, eval_env = None, seed=None, nsteps=2
 
     # Instantiate the model object (that creates act_model and train_model)
     if model_fn is None:
-        from baselines.ppo2.model import Model
-        model_fn = Model
+        if use_icm:
+            # use the custom ppo2 model with icm
+            from models.ppo_model import Model
+            model_fn = Model
+        else:
+            from baselines.ppo2.model import Model
+            model_fn = Model
 
     model = model_fn(policy=policy, ob_space=ob_space, ac_space=ac_space, nbatch_act=nenvs, nbatch_train=nbatch_train,
                     nsteps=nsteps, ent_coef=ent_coef, vf_coef=vf_coef,
@@ -121,7 +126,8 @@ def learn(*, network, env, total_timesteps, eval_env = None, seed=None, nsteps=2
         eval_epinfobuf = deque(maxlen=100)
 
     # Save network graph if specified in config file
-    save_graph()
+    if save_graph:
+        save_ntw_graph()
 
     # Start total timer
     tfirststart = time.time()
@@ -217,9 +223,7 @@ def learn(*, network, env, total_timesteps, eval_env = None, seed=None, nsteps=2
 def safemean(xs):
     return np.nan if len(xs) == 0 else np.mean(xs)
 
-def save_graph():
-    if not Config.tensorboard_save_graph:
-        return False
+def save_ntw_graph():
     import tensorflow as tf
     sess = get_session()
     writer = tf.summary.FileWriter(logger.get_dir(), sess.graph)
