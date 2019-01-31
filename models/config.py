@@ -27,6 +27,8 @@ ppo2_train_args = {'nsteps':240, #240,  1440 num_batches / 6 num_envs
 				   'noptepochs':1, # reduce epochs so that we dont use same old data to train model
 				   'cliprange':0.2, # NOTE: ray default 0.2. Ray: [vf_clip_param, clip_param], baselines: [clip_param]
 				   'save_interval':100, 
+				   'save_graph':False, 
+				   'use_icm':False, 
 				   'load_path':None, 
 				   'model_fn':None,
 				   # policy network_kwargs
@@ -43,6 +45,7 @@ use_gpu_for_workers = False
 use_icm = False
 icm_feature_model = 'mlp'
 icm_feature_model_params = {'num_layers':3, 'num_hidden':256, 'activation':'relu', 'layer_norm':False}
+icm_submodule = 'ppo2_icm'
 
 # policy network
 fcnet_hiddens = [256, 256, 256]

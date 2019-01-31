@@ -1,5 +1,6 @@
 import tensorflow as tf
 import functools
+import numpy as np
 
 from baselines.common.tf_util import get_session, save_variables, load_variables
 from baselines.common.tf_util import initialize
@@ -36,7 +37,8 @@ class Model(object):
         # icm parameters
         self.unsup = unsupType is not None
         predictor = None
-        numaction = ac_space.n
+        self.numaction = ac_space.n
+        designHead = 'universe'
 
         with tf.variable_scope('ppo2_model', reuse=tf.AUTO_REUSE):
             # CREATE OUR TWO MODELS
@@ -52,9 +54,9 @@ class Model(object):
         if self.unsup:
             with tf.variable_scope("predictor", reuse=tf.AUTO_REUSE):
                 if 'state' in unsupType:
-                    self.local_ap_network = predictor = StatePredictor(ob_space.shape, ac_space, designHead, unsupType)
+                    self.local_ap_network = predictor = StatePredictor(ob_space, ac_space, designHead, unsupType)
                 else:
-                    self.local_ap_network = predictor = StateActionPredictor(ob_space.shape, ac_space, designHead)
+                    self.local_ap_network = predictor = StateActionPredictor(ob_space, ac_space, designHead)
 
         # CREATE THE PLACEHOLDERS
         self.A = A = train_model.pdtype.sample_placeholder([None])
@@ -169,6 +171,7 @@ class Model(object):
         self.initial_state = act_model.initial_state
         # prediction bonus function for icm
         self.pred_bonus = predictor.pred_bonus
+        self.pred_bonuses = predictor.pred_bonuses
 
         self.save = functools.partial(save_variables, sess=sess)
         self.load = functools.partial(load_variables, sess=sess)
@@ -199,11 +202,15 @@ class Model(object):
         
         if self.unsup:
             # reduce the observations by one since we need one last one for prediction
-            td_map[self.train_model.X] = obs[:-1]
+            # td_map[self.train_model.X] = obs[:-1]
             # s1 and s2 are always off by one action
             td_map[self.local_ap_network.s1] = obs[:-1]
             td_map[self.local_ap_network.s2] = obs[1:]
-            td_map[self.local_ap_network.asample] = actions
+
+            # convert to one hot coding
+            one_hot_actions = np.eye(self.numaction)[actions]
+            actions = np.array(one_hot_actions, dtype=np.float32)
+            td_map[self.local_ap_network.asample] = actions[:-1]
 
         if states is not None:
             td_map[self.train_model.S] = states

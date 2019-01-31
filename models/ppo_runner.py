@@ -22,6 +22,7 @@ class Runner(AbstractEnvRunner):
         mb_obs, mb_rewards, mb_actions, mb_values, mb_dones, mb_neglogpacs, mb_bonuses = [],[],[],[],[],[],[]
         mb_states = self.states
         epinfos = []
+        epbonuses = []
         # For n in range number of steps
         for _ in range(self.nsteps):
             # Given observations, get action value and neglopacs
@@ -40,16 +41,24 @@ class Runner(AbstractEnvRunner):
 
             # get predictor bonus
             if self.model.unsup:
-                # in s_t (mb_obs[-1]) we took actions and got s_t+1 (self.obs)
-                bonuses = self.model.pred_bonus(mb_obs[-1], self.obs, actions)
+                # convert actions to one hot coding
+                numaction = self.env.action_space.n
+                one_hot_actions = np.eye(numaction)[actions]
+                one_hot_actions = np.array(one_hot_actions, dtype=np.float32)
+
+                bonuses = self.model.pred_bonuses(mb_obs[-1], self.obs, one_hot_actions)
                 mb_bonuses.append(bonuses)
+                epbonuses.append(bonuses)
             
             for info in infos:
                 maybeepinfo = info.get('episode')
                 if maybeepinfo:
+                    # TODO: this method of tracking the bonus is not accurate, should be changed in the future
                     if self.model.unsup:
                         # add bonuses to epinfos
-                        maybeepinfo.update({'bonus':safemean(bonuses)})
+                        maybeepinfo.update({'bonus':safemean(epbonuses)})
+                        # reset epbonuses for next steps
+                        epbonuses = []
                     epinfos.append(maybeepinfo)
         
         #batch of steps to batch of rollouts
@@ -87,6 +96,10 @@ class Runner(AbstractEnvRunner):
 def sf01(arr):
     """
     swap and then flatten axes 0 and 1
+
+    converts (nsteps, nenv, nfeatures) -> (nsteps*nenv, nfeatures) or (nsteps, nfeatures) -> (nsteps*nfeatures, )
+    example: (240, 6, 16) -> (1440, 16)
+             (240, 6) -> (1440,)
     """
     s = arr.shape
     return arr.swapaxes(0, 1).reshape(s[0] * s[1], *s[2:])

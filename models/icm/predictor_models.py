@@ -6,6 +6,7 @@ from models.constants import constants
 
 from baselines.common.models import get_network_builder
 import models.config as Config
+from models.utils import activation_str_function
 
 def normalized_columns_initializer(std=1.0):
     def _initializer(shape, dtype=None, partition_info=None):
@@ -167,7 +168,8 @@ def doomHead(x):
 
 def deepFCHead(x):
     print("Using Deep FC head")
-    features_ntw = get_network_builder(Config.icm_feature_model)(**Config.icm_feature_model_params)
+    extra_args = activation_str_function(Config.icm_feature_model_params)
+    features_ntw = get_network_builder(Config.icm_feature_model)(**extra_args)
     return features_ntw(x)
 
 
@@ -244,19 +246,16 @@ class StateActionPredictor(object):
     def __init__(self, ob_space, ac_space, designHead='universe'):
         # input: s1,s2: : [None, h, w, ch] (usually ch=1 or 4)
         # asample: 1-hot encoding of sampled action from policy: [None, ac_space]
-        input_shape = [None] + list(ob_space)
+        input_shape = (None,) + ob_space.shape
         self.s1 = phi1 = tf.placeholder(tf.float32, input_shape)
         self.s2 = phi2 = tf.placeholder(tf.float32, input_shape)
 
-        asample_shape = [None] + list(ac_space.shape)
         numaction = ac_space.n
+        asample_shape = [None] + list((numaction,))
         self.asample = asample = tf.placeholder(tf.float32, asample_shape)
 
-        # convert to one hot coding
-        self.asample = asample = tf.one_hot(asample, numaction)
-
         # feature encoding: phi1, phi2: [None, LEN]
-        size = 256
+        # size = 256
         if designHead == 'nips':
             phi1 = nipsHead(phi1)
             with tf.variable_scope(tf.get_variable_scope(), reuse=True):
@@ -278,6 +277,8 @@ class StateActionPredictor(object):
             phi1 = deepFCHead(phi1)
             with tf.variable_scope(tf.get_variable_scope(), reuse=True):
                 phi2 = deepFCHead(phi2)
+        
+        size = phi1.get_shape()[1].value
 
         # inverse model: g(phi1,phi2) -> a_inv: [None, ac_space]
         g = tf.concat([phi1, phi2], 1)
@@ -285,7 +286,7 @@ class StateActionPredictor(object):
         aindex = tf.argmax(asample, axis=1)  # aindex: [batch_size,]
         logits = linear(g, numaction, "glast", normalized_columns_initializer(0.01))
         self.invloss = tf.reduce_mean(tf.nn.sparse_softmax_cross_entropy_with_logits(
-                                        logits, aindex), name="invloss")
+                                        logits=logits, labels=aindex), name="invloss")
         self.ainvprobs = tf.nn.softmax(logits, dim=-1)
 
         # forward model: f(phi1,asample) -> phi2
@@ -296,7 +297,11 @@ class StateActionPredictor(object):
         self.forwardloss = 0.5 * tf.reduce_mean(tf.square(tf.subtract(f, phi2)), name='forwardloss')
         # self.forwardloss = 0.5 * tf.reduce_mean(tf.sqrt(tf.abs(tf.subtract(f, phi2))), name='forwardloss')
         # self.forwardloss = cosineLoss(f, phi2, name='forwardloss')
-        self.forwardloss = self.forwardloss * 256.0  # lenFeatures=size. Factored out to make hyperparams not depend on it.
+        self.forwardloss = self.forwardloss * 256.0  # lenFeatures=256.0. Factored out to make hyperparams not depend on it.
+
+        # forward loss for each batch in [batch_size,]
+        self.ax1_forwardloss = 0.5 * tf.reduce_mean(tf.square(tf.subtract(f, phi2)), 1, name='ax1_forwardloss')
+        self.ax1_forwardloss = self.ax1_forwardloss * 256.0
 
         # variable list
         self.var_list = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, tf.get_variable_scope().name)
@@ -322,6 +327,21 @@ class StateActionPredictor(object):
         # print('ErrorF: ', error[0], ' ErrorI:', error[1])
         error = sess.run(self.forwardloss,
             {self.s1: [s1], self.s2: [s2], self.asample: [asample]})
+        error = error * constants['PREDICTION_BETA']
+        return error
+
+    def pred_bonuses(self, s1, s2, asample):
+        '''
+        returns bonus predicted by forward model
+            input: s1,s2: [h, w, ch], asample: [ac_space] 1-hot encoding
+            output: scalar bonus
+        '''
+        sess = tf.get_default_session()
+        # error = sess.run([self.forwardloss, self.invloss],
+        #     {self.s1: [s1], self.s2: [s2], self.asample: [asample]})
+        # print('ErrorF: ', error[0], ' ErrorI:', error[1])
+        error = sess.run(self.ax1_forwardloss,
+            {self.s1: s1, self.s2: s2, self.asample: asample})
         error = error * constants['PREDICTION_BETA']
         return error
 

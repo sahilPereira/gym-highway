@@ -10,7 +10,7 @@ try:
     from mpi4py import MPI
 except ImportError:
     MPI = None
-from baselines.ppo2.runner import Runner
+from models.ppo_runner import Runner
 
 import models.config as Config
 from baselines.common.tf_util import get_session
@@ -204,6 +204,8 @@ def learn(*, network, env, total_timesteps, eval_env = None, seed=None, nsteps=2
             logger.logkv(Config.tensorboard_rootdir+"explained_variance", float(ev))
             logger.logkv(Config.tensorboard_rootdir+'ep_reward_mean', safemean([epinfo['r'] for epinfo in epinfobuf]))
             logger.logkv(Config.tensorboard_rootdir+'ep_length_mean', safemean([epinfo['l'] for epinfo in epinfobuf]))
+            if use_icm:
+                logger.logkv(Config.tensorboard_rootdir+'ep_bonus_mean', safemean([epinfo['bonus'] for epinfo in epinfobuf]))
             if eval_env is not None:
                 logger.logkv(Config.tensorboard_rootdir+'eval_eprewmean', safemean([epinfo['r'] for epinfo in eval_epinfobuf]) )
                 logger.logkv(Config.tensorboard_rootdir+'eval_eplenmean', safemean([epinfo['l'] for epinfo in eval_epinfobuf]) )
@@ -228,6 +230,7 @@ def save_ntw_graph():
     sess = get_session()
     writer = tf.summary.FileWriter(logger.get_dir(), sess.graph)
     writer.close()
+    print("Graph saved!")
     return True
 
 

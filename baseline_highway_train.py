@@ -25,8 +25,8 @@ from baselines import logger
 from baselines.common.vec_env.vec_normalize import VecNormalize
 
 import tensorflow as tf
-# from models import config as Config
 import models.config as Config
+from models.utils import activation_str_function
 
 try:
     from mpi4py import MPI
@@ -43,7 +43,12 @@ def train(args, extra_args):
     total_timesteps = int(args.num_timesteps)
     seed = args.seed
 
-    learn = get_learn_function(args.alg)
+    if extra_args["use_icm"]:
+        # if using ICM use ppo2_icm submodule in ppo2
+        learn = get_alg_module(args.alg, Config.icm_submodule).learn
+    else:
+        learn = get_learn_function(args.alg)
+    
     alg_kwargs = get_learn_function_defaults(args.alg, env_type)
     alg_kwargs.update(extra_args)
 
@@ -154,21 +159,6 @@ def get_learn_function_defaults(alg, env_type):
         kwargs = {}
     return kwargs
 
-def activation_str_function(extra_args):
-    '''
-    Convert string activation into actual tf activation function
-    '''
-    activation_arg = extra_args['activation']
-    if activation_arg == "relu":
-        extra_args['activation'] = tf.nn.relu
-    elif activation_arg == "tanh":
-        extra_args['activation'] = tf.tanh
-    elif activation_arg == "elu":
-        extra_args['activation'] = tf.nn.elu
-    else:
-        extra_args['activation'] = tf.nn.sigmoid
-    return extra_args
-
 def register_env(c_id, c_entry_point, c_kwargs):
     '''
     Register a gym environment with new id, entry point and kwargs
@@ -206,6 +196,15 @@ def create_results_dir(args):
                 raise
     return results_dir
 
+def save_configs(results_dir, args, extra_args):
+    config_save_path = "{}/configs.txt".format(results_dir)
+    extra_args['activation'] = str(extra_args['activation'])
+    print(Config.ppo2_train_args['activation'])
+    print(extra_args)
+    with open(config_save_path, mode='w', encoding='utf-8') as f:
+        json.dump([vars(args), extra_args], f, indent=4)
+    return True
+
 def arg_parser():
     """
     Create an empty argparse.ArgumentParser.
@@ -225,10 +224,8 @@ def custom_arg_parser():
     parser.add_argument('--reward_scale', help='Reward scale factor. Default: 1.0', default=1.0, type=float)
     parser.add_argument('--save_path', help='Path to save trained model to', default=None, type=str)
     parser.add_argument('--save_model', default=True, action='store_false')
-    parser.add_argument('--save_graph', default=False, action='store_true')
     parser.add_argument('--save_video_interval', help='Save video every x steps (0 = disabled)', default=0, type=int)
     parser.add_argument('--save_video_length', help='Length of recorded video. Default: 200', default=200, type=int)
-    parser.add_argument('--icm', dest="use_icm", default=False, action='store_true')
     parser.add_argument('--play', default=False, action='store_true')
     parser.add_argument('--extra_import', help='Extra module to import to access external environments', type=str, default=None)
     return parser
@@ -247,6 +244,10 @@ def main(args):
 
     # create a separate result dir for each run
     results_dir = create_results_dir(args)
+
+    save_configs(results_dir, args, extra_args)
+
+    exit(0)
 
     if MPI is None or MPI.COMM_WORLD.Get_rank() == 0:
         rank = 0
