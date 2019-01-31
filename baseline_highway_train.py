@@ -199,8 +199,6 @@ def create_results_dir(args):
 def save_configs(results_dir, args, extra_args):
     config_save_path = "{}/configs.txt".format(results_dir)
     extra_args['activation'] = str(extra_args['activation'])
-    print(Config.ppo2_train_args['activation'])
-    print(extra_args)
     with open(config_save_path, mode='w', encoding='utf-8') as f:
         json.dump([vars(args), extra_args], f, indent=4)
     return True
@@ -246,8 +244,6 @@ def main(args):
     results_dir = create_results_dir(args)
 
     save_configs(results_dir, args, extra_args)
-
-    exit(0)
 
     if MPI is None or MPI.COMM_WORLD.Get_rank() == 0:
         rank = 0
