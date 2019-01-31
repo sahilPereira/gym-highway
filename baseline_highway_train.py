@@ -198,9 +198,12 @@ def create_results_dir(args):
 
 def save_configs(results_dir, args, extra_args):
     config_save_path = "{}/configs.txt".format(results_dir)
-    extra_args['activation'] = str(extra_args['activation'])
+
+    args_copy = {k: v for k,v in vars(args).items()}
+    extra_args_copy = {k: v for k,v in extra_args.items()}
+    extra_args_copy['activation'] = str(extra_args_copy['activation'])
     with open(config_save_path, mode='w', encoding='utf-8') as f:
-        json.dump([vars(args), extra_args], f, indent=4)
+        json.dump([args_copy, extra_args_copy], f, indent=4)
     return True
 
 def arg_parser():
@@ -243,6 +246,7 @@ def main(args):
     # create a separate result dir for each run
     results_dir = create_results_dir(args)
 
+    # save configurations
     save_configs(results_dir, args, extra_args)
 
     if MPI is None or MPI.COMM_WORLD.Get_rank() == 0:
