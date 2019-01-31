@@ -90,8 +90,15 @@ if __name__ == '__main__':
 
     # *map(sf01, (mb_obs, mb_returns, mb_dones, mb_actions, mb_values, mb_neglogpacs))
     # slices = np.array(slices)
-    print(slices)
     # print(slices)
+    # print(slices)
+
+    epbonuses = [0.0]*5
+    epbonuses[2] = 1
+    epbonuses[4] = 7
+    epbonuses[1] += 9
+
+    print(epbonuses)
     
     # x = tf.placeholder(shape=(None, 16), dtype='float32')
     # y = tf.layers.flatten(x)

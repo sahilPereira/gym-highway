@@ -22,7 +22,7 @@ class Runner(AbstractEnvRunner):
         mb_obs, mb_rewards, mb_actions, mb_values, mb_dones, mb_neglogpacs, mb_bonuses = [],[],[],[],[],[],[]
         mb_states = self.states
         epinfos = []
-        epbonuses = []
+        epbonuses = [0.0]*self.env.num_envs
         # For n in range number of steps
         for _ in range(self.nsteps):
             # Given observations, get action value and neglopacs
@@ -48,17 +48,20 @@ class Runner(AbstractEnvRunner):
 
                 bonuses = self.model.pred_bonuses(mb_obs[-1], self.obs, one_hot_actions)
                 mb_bonuses.append(bonuses)
-                epbonuses.append(bonuses)
+                epbonuses += bonuses
             
-            for info in infos:
+            # for info in infos:
+            for i in range(len(infos)):
+                info = infos[i]
                 maybeepinfo = info.get('episode')
                 if maybeepinfo:
                     # TODO: this method of tracking the bonus is not accurate, should be changed in the future
+                    # NOT sure if this is fixed now, need to test
                     if self.model.unsup:
                         # add bonuses to epinfos
-                        maybeepinfo.update({'bonus':safemean(epbonuses)})
+                        maybeepinfo.update({'bonus':epbonuses[i]})
                         # reset epbonuses for next steps
-                        epbonuses = []
+                        epbonuses[i] = 0.0
                     epinfos.append(maybeepinfo)
         
         #batch of steps to batch of rollouts
