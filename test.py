@@ -93,11 +93,28 @@ if __name__ == '__main__':
     # print(slices)
     # print(slices)
 
-    epbonuses = [0.0]*5
-    epbonuses[2] = 1
-    epbonuses[4] = 7
-    epbonuses[1] += 9
+    # epbonuses = [0.0]*5
 
+    epbonuses = np.zeros(5, dtype=np.float32)
+    # epbonuses = np.add(epbonuses, [2,4,1,5,6])
+    epbonuses += [2,4,1,5,6]
+    # epbonuses = [x + y for x, y in zip(epbonuses, [2,4,1,5,6])]
+    print(epbonuses)
+
+    epbonuses += [1,1,1,1,1]
+    # epbonuses = [x + y for x, y in zip(epbonuses, [1,1,1,1,1])]
+    # epbonuses = np.add(epbonuses, [1,1,1,1,1])
+    print(epbonuses)
+
+    epbonuses[1] = 0.0
+    epbonuses[3] = 0.0
+    print(epbonuses)
+
+    epbonuses += [5,5,3,2,1]
+    # epbonuses = np.add(epbonuses, [5,5,3,2,1])
+    print(epbonuses)
+
+    epbonuses = epbonuses*2.0
     print(epbonuses)
     
     # x = tf.placeholder(shape=(None, 16), dtype='float32')

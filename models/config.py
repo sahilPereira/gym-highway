@@ -44,7 +44,7 @@ use_gpu_for_workers = False
 # intrinsic curiosity module parameters
 use_icm = False
 icm_feature_model = 'mlp'
-icm_feature_model_params = {'num_layers':3, 'num_hidden':256, 'activation':'relu', 'layer_norm':False}
+icm_feature_model_params = {'num_layers':3, 'num_hidden':32, 'activation':'relu', 'layer_norm':False}
 icm_submodule = 'ppo2_icm'
 
 # policy network
