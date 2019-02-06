@@ -1,5 +1,7 @@
 *.egg-info
 *.pyc
+*.txt
 .idea
 /logs
+.vscode/*
 *~

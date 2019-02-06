@@ -6,5 +6,5 @@ logger = logging.getLogger(__name__)
 register(
     id='Highway-v0',
     entry_point='gym_highway.envs:HighwayEnv'
-    # kwargs={'manual': False, 'inf_obs': True, 'save': False},
+    # kwargs={'manual': False, 'inf_obs': True, 'save': False, 'render': True}
 )

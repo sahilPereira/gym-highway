@@ -833,7 +833,7 @@ class HighwaySimulator:
                     self.all_obstacles.add(new_obstacle)
 
                     # TEST: reward for overtaking each vehicle
-                    self.reward += 1
+                    # self.reward += 1
 
         # Drawing
         if self.render:
