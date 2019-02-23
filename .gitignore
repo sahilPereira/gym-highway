@@ -4,4 +4,6 @@
 .idea
 /logs
 .vscode/*
+*/.vscode/*
+*/.gitignore
 *~
