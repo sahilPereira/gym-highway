@@ -12,7 +12,7 @@ import pandas as pd
 import pygame
 from pygame.math import Vector2
 
-from gym_highway.envs.stackelbergPlayer import Action, StackelbergPlayer
+from gym_highway.multiagent_envs.agent import Car, Obstacle
 import gym_highway.multiagent_envs.highway_constants as Constants
 
 class Action(Enum):
@@ -83,61 +83,24 @@ class HighwaySimulator:
             rect = rotated.get_rect()
             self.screen.blit(rotated, auto.position * Constants.ppu - (rect.width / 2, rect.height / 2))
 
-    def manualControl(self, car, all_obstacles):
-        # User input
-        pressed = pygame.key.get_pressed()
+    # execute the given action for the specified agent
+    def executeAction(self, agent, all_obstacles):
+        selected_action = agent.action
+        if (selected_action == Action.ACCELERATE) and not agent.do_accelerate:
+            self.accelerate(agent)
+        elif (selected_action == Action.MAINTAIN) and not agent.do_maintain:
+            self.maintain(agent, all_obstacles)
+        # elif (selected_action == Action.DECELERATE) and not agent.do_decelerate:
+        #     self.decelerate(agent)
 
-        if pressed[pygame.K_UP] and not car.do_accelerate:
-            self.accelerate(car)
-        elif pressed[pygame.K_DOWN] and not car.do_maintain:
-            self.maintain(car, all_obstacles)
-        elif pressed[pygame.K_SPACE] and not car.do_decelerate:
-            self.decelerate(car)
+        agent.acceleration = max(-agent.max_acceleration, min(agent.acceleration, agent.max_acceleration))
 
-        car.acceleration = max(-car.max_acceleration, min(car.acceleration, car.max_acceleration))
+        if (selected_action == Action.RIGHT) and not agent.right_mode:
+            self.turn_right(agent)
+        elif (selected_action == Action.LEFT) and not agent.left_mode:
+            self.turn_left(agent)
 
-        if pressed[pygame.K_RIGHT] and not car.right_mode:
-            self.turn_right(car)
-        elif pressed[pygame.K_LEFT] and not car.left_mode:
-            self.turn_left(car)
-
-        car.steering = max(-car.max_steering, min(car.steering, car.max_steering))
-
-    def stackelbergControl(self, controller, reference_car, all_agents, all_obstacles):
-
-        # Step 1. select players to execute action at this instance
-        players = controller.pickLeadersAndFollowers(all_agents, all_obstacles)
-
-        # Step 2. iterate over the set of players and execute their actions
-        for leader in players:
-            # Step 3: select actions for all players from step 2 sequentially
-            selected_action = controller.selectAction(leader, all_obstacles)
-
-            # select action using Stackelberg game
-            # selected_action = controller.selectStackelbergAction(leader, all_obstacles, reference_car)
-
-            self.executeAction(selected_action, leader, all_obstacles)
-
-        # Note that every player acts as a leader when selecting their actions
-        return selected_action
-
-    # execute the given action for the specified leader
-    def executeAction(self, selected_action, leader, all_obstacles):
-        if (selected_action == Action.ACCELERATE) and not leader.do_accelerate:
-            self.accelerate(leader)
-        elif (selected_action == Action.MAINTAIN) and not leader.do_maintain:
-            self.maintain(leader, all_obstacles)
-        # elif (selected_action == Action.DECELERATE) and not leader.do_decelerate:
-        #     self.decelerate(leader)
-
-        leader.acceleration = max(-leader.max_acceleration, min(leader.acceleration, leader.max_acceleration))
-
-        if (selected_action == Action.RIGHT) and not leader.right_mode:
-            self.turn_right(leader)
-        elif (selected_action == Action.LEFT) and not leader.left_mode:
-            self.turn_left(leader)
-
-        leader.steering = max(-leader.max_steering, min(leader.steering, leader.max_steering))
+        agent.steering = max(-agent.max_steering, min(agent.steering, agent.max_steering))
         
         return
 
@@ -256,9 +219,6 @@ class HighwaySimulator:
             if e.type == pygame.QUIT:
                 # self.is_done = True
                 self.close()
-            # if e.type == pygame.KEYDOWN:
-            #     if e.key == pygame.K_p: self.is_paused = True
-            #     if e.key == pygame.K_r: self.is_paused = False
 
         if self.is_paused:
             if self.render:
@@ -273,21 +233,22 @@ class HighwaySimulator:
 
         self.is_done = self.run_time >= self.run_duration
 
-        # workign with just one agent for now
-        # TODO: need to change this when working with multiple agents
-        self.executeAction(action, self.reference_car, self.all_obstacles)
+        # execute action for each agent (actions are updated in the env after calling update())
+        for agent in self.all_agents:
+            self.executeAction(agent, self.all_obstacles)
 
-        # collision check
+        # collision check (done before update() to check if previous action led to collisions)
         if not self.collision_count_lock:
             for agent in self.all_agents:
                 # get collisions with non reactive obstacles
-                car_collision_list = pygame.sprite.spritecollide(agent,self.all_coming_cars,False)
+                car_collision_list = pygame.sprite.spritecollide(agent, self.all_coming_cars, False)
                 obs_collision_val = len(car_collision_list)
                 self.num_obs_collisions += obs_collision_val
 
+                # get collisions with reactive agents
                 collision_group = self.all_agents.copy()
                 collision_group.remove(agent)
-                car_collision_list = pygame.sprite.spritecollide(agent,collision_group,False)
+                car_collision_list = pygame.sprite.spritecollide(agent, collision_group, False)
                 agent_collision_val = len(car_collision_list)
                 self.num_agent_collisions += agent_collision_val
 
@@ -298,14 +259,13 @@ class HighwaySimulator:
                     self.is_done = True
 
         # update all sprites
+        # this will update all the agents and obstacles based on the actions selected
         self.all_agents.update(dt, self.reference_car)
         self.all_coming_cars.update(dt, self.reference_car)
 
-        # max reward per step is 1.0 for going at max velocity
+        # max reward per step is 0.0 for going at max velocity
         if self.reward == 0.0:
-            # self.reward = self.reference_car.velocity.x / self.reference_car.max_velocity
-
-            # TODO: reward of 0 for going max speed, negative reward otherwise
+            # reward of 0.0 for going max speed, negative reward otherwise
             self.reward = (self.reference_car.velocity.x / self.reference_car.max_velocity) - 1.0
 
             # TODO: test delayed reward
@@ -324,7 +284,7 @@ class HighwaySimulator:
         # generate new obstacles
         if self.inf_obstacles:
             for obstacle in self.all_coming_cars:
-                if obstacle.position.x < -Constants.CAR_WIDTH/32:
+                if obstacle.position.x < -Constants.CAR_WIDTH/Constants.ppu:
                     # remove old obstacle
                     self.all_coming_cars.remove(obstacle)
                     self.all_obstacles.remove(obstacle)
