@@ -12,20 +12,12 @@ import gym_highway.multiagent_envs.highway_constants as Constants
 import logging
 logger = logging.getLogger(__name__)
 
-# ACTION_LOOKUP = {
-#     0 : Action.LEFT,
-#     1 : Action.RIGHT,
-#     2 : Action.ACCELERATE,
-#     3 : Action.MAINTAIN,
-#     # 3 : Action.DECELERATE,
-# }
-
-class HighwayEnv(gym.Env, utils.EzPickle):
-    metadata = {'render.modes': ['human']}
+class HighwayWorld(object):
+    # metadata = {'render.modes': ['human']}
 
     def __init__(self, manual=False, inf_obs=True, save=False, render=True):
-        self.__version__ = "0.0.1"
-        logging.info("HighwayEnv - Version {}".format(self.__version__))
+        # self.__version__ = "0.0.1"
+        # logging.info("HighwayWorld - Version {}".format(self.__version__))
 
         self.env = self._configure_environment(manual, inf_obs, save, render)
         self.action_space = spaces.Discrete(len(Action))
@@ -73,21 +65,6 @@ class HighwayEnv(gym.Env, utils.EzPickle):
         highwaySim = HighwaySimulator(cars_list, obstacle_list, manual, inf_obs, save, render)
         return highwaySim
 
-
-    # update state of the world
-    def step(self):
-        # set actions for scripted agents 
-        # TODO: might be useful when we want the scripted agents to have a more robust script
-        for agent in self.scripted_agents:
-            agent.action = agent.action_callback(agent, self)
-        
-        # update the agents physical positions and metrics
-        # self.integrate_state(p_force)
-
-        # update agent communication state
-        for agent in self.agents:
-            self.update_agent_state(agent)
-
     # TODO: not sure if this communication channel is required
     def update_agent_state(self, agent):
         # set communication state (directly for now)
@@ -97,45 +74,33 @@ class HighwayEnv(gym.Env, utils.EzPickle):
             noise = np.random.randn(*agent.action.c.shape) * agent.c_noise if agent.c_noise else 0.0
             agent.state.c = agent.action.c + noise   
 
-    def step(self, action):
+    def step(self):
         """
         Update state of the world
         """
         reward = 0.0
         num_steps = 15 #int(60*0.25)
+
+        # set actions for scripted agents 
+        # TODO: might be useful when we want the scripted agents to have a more robust script
+        # for agent in self.scripted_agents:
+        #     agent.action = agent.action_callback(agent, self)
+
         for _ in range(num_steps):
-            reward = self._take_action(action)
+            reward = self._take_action()
 
             # if action leads to crash, end the run
             if reward < -1.0:
                 break
-        ob = self._get_state()
 
+        ob = self._get_state()
         # round the reward
         reward = round(reward, 3)
-
         return ob, reward, self.env.is_episode_over(), self.env.get_info()
 
-    # def update_agent_state(self, agent):
-    #     reward = 0.0
-    #     num_steps = 15 #int(60*0.25)
-    #     for _ in range(num_steps):
-    #         reward = self._take_action(action)
-
-    #         # if action leads to crash, end the run
-    #         if reward < -1.0:
-    #             break
-    #     ob = self._get_state()
-
-    #     # round the reward
-    #     reward = round(reward, 3)
-    #     pass
-
-    def _take_action(self, action):
-        """ Converts the action space into an Enum action. """
-        # action_type = ACTION_LOOKUP[action]
-        action_type = Action(action)
-        return self.env.act(action_type)
+    def _take_action(self):
+        """ All agents execute their selected actions """
+        return self.env.act()
 
     def reset(self):
         """

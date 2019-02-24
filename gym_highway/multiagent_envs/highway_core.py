@@ -201,7 +201,7 @@ class HighwaySimulator:
 
         return
 
-    def act(self, action):
+    def act(self):
         """
             Used by gym-highway to change simulation state only when this function is called
 
@@ -326,7 +326,7 @@ class HighwaySimulator:
             self.displayPos(self.reference_car.velocity.x)
 
             # display selected action
-            self.displayAction(action)
+            # self.displayAction(action)
 
             pygame.display.flip()
 
