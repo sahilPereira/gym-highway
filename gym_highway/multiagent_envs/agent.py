@@ -12,8 +12,7 @@ import pandas as pd
 import pygame
 from pygame.math import Vector2
 
-from gym_highway.envs.stackelbergPlayer import Action, StackelbergPlayer
-
+from gym_highway.multiagent_envs.highway_core import Action
 
 class Car(pygame.sprite.Sprite):
     def __init__(self, id, x, y, vel_x=0.0, vel_y=0.0, lane_id=1, color=Constants.RED, angle=0.0, length=4, max_steering=30, max_acceleration=5.0):
@@ -46,6 +45,11 @@ class Car(pygame.sprite.Sprite):
         self.lane_id = lane_id
         self.left_mode, self.right_mode, self.do_accelerate, self.do_decelerate, self.do_maintain = False, False, False, False, False
         self.cruise_vel = 0.0
+
+        # action
+        self.action = Action.MAINTAIN
+        # script behavior to execute
+        self.action_callback = None
 
     def simCopy(self):
         sim_car = Car(self.id, self.position.x, self.position.y, self.velocity.x, self.velocity.y, self.lane_id)
