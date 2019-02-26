@@ -18,6 +18,8 @@ class Scenario(BaseScenario):
         self._configure_world(world)
         # make initial conditions
         self.reset_world(world)
+        # track rewards for info benchmark_data
+        self.current_rewards = None
 
         return world
 
@@ -40,7 +42,16 @@ class Scenario(BaseScenario):
         world.reset()
 
     def benchmark_data(self, agent, world):
-        pass
+        """ Get ordered info for all policy agents """
+        info = [None]*len(world.policy_agents_data)
+        for agent in world.agents:
+            data = {"reward": self.current_rewards[agent.id],
+                    "run_time": world.run_time, 
+                    "num_obs_collisions": world.num_obs_collisions, 
+                    "num_agent_collisions": world.num_agent_collisions}
+            info[agent.id] = data
+        
+        return info
 
     def rewards(self, world):
         """ Get ordered rewards for all policy agents """
@@ -56,6 +67,7 @@ class Scenario(BaseScenario):
                 # reward of 0.0 for going max speed, negative reward otherwise
                 agent_rewards[agent.id] = (agent.velocity.x / agent.max_velocity) - 1.0
         
+        self.current_rewards = agent_rewards
         return agent_rewards
 
     def observations(self, world):
