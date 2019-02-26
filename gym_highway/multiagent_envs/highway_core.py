@@ -23,7 +23,7 @@ class Action(Enum):
     # DECELERATE = 3
 
 class HighwaySimulator:
-    def __init__(self, cars_list, obstacle_list, is_manual=False, inf_obstacles=False, is_data_saved=False, render=False):
+    def __init__(self, manual=False, inf_obs=False, save=False, render=False):
         pygame.init()
         width = Constants.WIDTH
         height = Constants.HEIGHT
@@ -35,24 +35,50 @@ class HighwaySimulator:
         self.exit = False
 
         # simulation options
-        self.cars_list = cars_list
-        self.obstacle_list = obstacle_list
-        self.is_manual = is_manual
-        self.inf_obstacles = inf_obstacles
-        self.is_data_saved = is_data_saved
+        self.policy_agents_data = None
+        self.scripted_agents_data = None
+        self.is_manual = manual
+        self.inf_obstacles = inf_obs
+        self.is_data_saved = save
         self.render = render
-        self.total_runs = 100
         self.run_duration = 60 # 60 seconds
 
-        # log files
-        self.files_dir = 'datafiles/NoDelay/dt_0.05/'
-        self.file_name = self.files_dir+'model_IGA_0.05_%d_%d_%d.csv'%(len(self.cars_list), self.total_runs, self.run_duration)
-
-        self.df_columns = ['agent_count','run_count','obs_collisions','agent_collisions', 'avg_velocity', 'avg_distance']
-        self.position_columns = ['agent_id','time','pos_x','pos_y']
-
+        # list of agents and entities (can change at execution-time!)
+        self.agents = None
+        self.scripted_agents = None
+        self.all_obstacles = None
+        # communication channel dimensionality
+        self.dim_c = 0
+        
         # reset simulator states
         self.reset()
+
+    # return all entities in the world
+    @property
+    def entities(self):
+        return self.all_obstacles
+
+    # return all agents controllable by external policies
+    @property
+    def policy_agents(self):
+        return [agent for agent in self.agents if agent.action_callback is None]
+
+    # return all agents controlled by world scripts
+    @property
+    def scripted_agents(self):
+        return [agent for agent in self.scripted_agents if agent.action_callback is not None]
+    
+    def set_agents(self, agents):
+        """ Set all policy agents used in this world """
+        for agent in agents:
+            self.agents.add(agent)
+            self.all_obstacles.add(agent)
+
+    def set_scripted_agents(self, scripted_agents):
+        """ Set all scripted agents used in this world """
+        for agent in scripted_agents:
+            self.scripted_agents.add(agent)
+            self.all_obstacles.add(agent)
 
     def loadBackground(self):
         bkgd = pygame.image.load('gym_highway/envs/roadImg.png').convert()
@@ -162,22 +188,24 @@ class HighwaySimulator:
         self.position_tracker = [[] for x in range(4)]
 
         # simulation objects
-        self.all_agents = pygame.sprite.Group()
+        self.agents = pygame.sprite.Group()
+        self.scripted_agents = pygame.sprite.Group()
         self.all_obstacles = pygame.sprite.Group()
-        self.all_coming_cars = pygame.sprite.Group()
 
         self.reference_car = None
-        for data in self.cars_list:
-            new_car = Car(id=data['id'], x=data['x'], y=data['y'], vel_x=data['vel_x'], vel_y=data['vel_y'], lane_id=data['lane_id'])
-            self.all_agents.add(new_car)
-            self.all_obstacles.add(new_car)
 
+        # set agent objects
+        for data in self.policy_agents_data:
+            new_agent = Car(id=data['id'], x=data['x'], y=data['y'], vel_x=data['vel_x'], vel_y=data['vel_y'], lane_id=data['lane_id'])
+            self.agents.add(new_agent)
+            self.all_obstacles.add(new_agent)
+            
             if not self.reference_car:
-                self.reference_car = new_car
+                self.reference_car = new_agent
 
-        for data in self.obstacle_list:
+        for data in self.scripted_agents_data:
             new_obstacle = Obstacle(id=data['id'], x=data['x'], y=data['y'], vel_x=data['vel_x'], vel_y=0.0, lane_id=data['lane_id'], color=data['color'])
-            self.all_coming_cars.add(new_obstacle)
+            self.scripted_agents.add(new_obstacle)
             self.all_obstacles.add(new_obstacle)
 
         self.action_timer = 0.0
@@ -195,9 +223,9 @@ class HighwaySimulator:
         self.run_time = 0.0
 
         self.is_paused = False
-        self.is_done = False
+        self.is_done = [False]*len(self.policy_agents_data)
 
-        self.reward = 0.0
+        self.reward = [0.0]*len(self.policy_agents_data)
 
         return
 
@@ -212,7 +240,7 @@ class HighwaySimulator:
         dt = self.clock.get_time() / 1000
 
         # reset reward so that it corresponds to current action
-        self.reward = 0.0
+        self.reward = [0.0]*len(self.policy_agents_data)
 
         # pause game when needed
         for e in pygame.event.get():
@@ -231,62 +259,33 @@ class HighwaySimulator:
         self.run_time += dt
         self.continuous_time += dt
 
-        self.is_done = self.run_time >= self.run_duration
+        if self.run_time >= self.run_duration:
+            self.is_done = [True]*len(self.policy_agents_data)
 
         # execute action for each agent (actions are updated in the env after calling update())
-        for agent in self.all_agents:
+        for agent in self.agents:
             self.executeAction(agent, self.all_obstacles)
-
-        # collision check (done before update() to check if previous action led to collisions)
-        if not self.collision_count_lock:
-            for agent in self.all_agents:
-                # get collisions with non reactive obstacles
-                car_collision_list = pygame.sprite.spritecollide(agent, self.all_coming_cars, False)
-                obs_collision_val = len(car_collision_list)
-                self.num_obs_collisions += obs_collision_val
-
-                # get collisions with reactive agents
-                collision_group = self.all_agents.copy()
-                collision_group.remove(agent)
-                car_collision_list = pygame.sprite.spritecollide(agent, collision_group, False)
-                agent_collision_val = len(car_collision_list)
-                self.num_agent_collisions += agent_collision_val
-
-                # TODO: changed the crash multiplier to 10.0 instead of 1.0
-                self.reward -= (obs_collision_val + agent_collision_val)*250.0
-                if self.reward < 0:
-                    # end run when crash occurs
-                    self.is_done = True
 
         # update all sprites
         # this will update all the agents and obstacles based on the actions selected
-        self.all_agents.update(dt, self.reference_car)
-        self.all_coming_cars.update(dt, self.reference_car)
-
-        # max reward per step is 0.0 for going at max velocity
-        if self.reward == 0.0:
-            # reward of 0.0 for going max speed, negative reward otherwise
-            self.reward = (self.reference_car.velocity.x / self.reference_car.max_velocity) - 1.0
-
-            # TODO: test delayed reward
-            # if self.is_done:
-            #     self.reward = (sum(self.total_velocity_per_run) / float(len(self.total_velocity_per_run))) / self.reference_car.max_velocity
+        self.agents.update(dt, self.reference_car)
+        self.scripted_agents.update(dt, self.reference_car)
 
         # keep track of agent velocity at end of every action
         if self.log_timer >= Constants.ACTION_RESET_TIME:
-            for agent in self.all_agents:
+            for agent in self.agents:
                 self.total_velocity_per_run.append(agent.velocity.x)
             self.log_timer = 0.0
 
-        sorted_agents = sorted(self.all_agents, key=lambda x: x.position.x, reverse=True)
+        sorted_agents = sorted(self.agents, key=lambda x: x.position.x, reverse=True)
         self.reference_car = sorted_agents[0]
 
         # generate new obstacles
         if self.inf_obstacles:
-            for obstacle in self.all_coming_cars:
+            for obstacle in self.scripted_agents:
                 if obstacle.position.x < -Constants.CAR_WIDTH/Constants.ppu:
                     # remove old obstacle
-                    self.all_coming_cars.remove(obstacle)
+                    self.scripted_agents.remove(obstacle)
                     self.all_obstacles.remove(obstacle)
                     # obstacle_lanes.remove(obstacle.lane_id)
 
@@ -297,7 +296,7 @@ class HighwaySimulator:
                     rand_lane_id = obstacle.lane_id
 
                     new_obstacle = Obstacle(id=randrange(100,1000), x=rand_pos_x, y=rand_pos_y, vel_x=rand_vel_x, vel_y=0.0, lane_id=rand_lane_id, color=Constants.YELLOW)
-                    self.all_coming_cars.add(new_obstacle)
+                    self.scripted_agents.add(new_obstacle)
                     self.all_obstacles.add(new_obstacle)
 
                     # TEST: reward for overtaking each vehicle
@@ -315,9 +314,9 @@ class HighwaySimulator:
             self.bkgd_x -= self.reference_car.velocity.x
 
             # update the agent sprites
-            self.updateSprites(self.all_agents)
+            self.updateSprites(self.agents)
             # update obstacle sprites
-            self.updateSprites(self.all_coming_cars)
+            self.updateSprites(self.scripted_agents)
 
             # update collision display count
             self.displayScore(self.num_obs_collisions, self.num_agent_collisions)
@@ -335,10 +334,33 @@ class HighwaySimulator:
         self.clock.tick(self.ticks)
         # self.clock.tick()
 
-        return self.reward
+    def check_collisions(self):
+        # collision check (done before update() to check if previous action led to collisions)
+        collisions = [False]*len(self.policy_agents_data)
+        if not self.collision_count_lock:
+            for agent in self.agents:
+                # get collisions with non reactive obstacles
+                car_collision_list = pygame.sprite.spritecollide(agent, self.scripted_agents, False)
+                obs_collision_val = len(car_collision_list)
+                self.num_obs_collisions += obs_collision_val
+
+                # get collisions with reactive agents
+                collision_group = self.agents.copy()
+                collision_group.remove(agent)
+                car_collision_list = pygame.sprite.spritecollide(agent, collision_group, False)
+                agent_collision_val = len(car_collision_list)
+                self.num_agent_collisions += agent_collision_val
+
+                if (obs_collision_val + agent_collision_val) > 0:
+                    collisions[agent.id] = True
+                    self.is_done[agent.id] = True
+
+        return collisions
 
     def get_state(self):
         """
+            FIXME: sprites are not ordered! the observations are randomized each step!
+
             Observations correspond to positions and velocities of all vehicles on the road.
             Each vehicle contains 4 parameters [pos_x, pos_y, vel_x, vel_y]
             The agent position and velocity is the first entry in the observation space.

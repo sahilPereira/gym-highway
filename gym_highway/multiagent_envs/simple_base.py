@@ -1,22 +1,79 @@
 import numpy as np
 from gym_highway.multiagent_envs.agent import Car, Obstacle
 from gym_highway.multiagent_envs.highway_world import HighwayWorld
+from gym_highway.multiagent_envs.highway_core import HighwaySimulator
 from multiagent.scenario import BaseScenario
 
 
 class Scenario(BaseScenario):
     def make_world(self, **kwargs):
-        world = HighwayWorld(**kwargs)
+        world = HighwaySimulator(**kwargs)
+        # set any world properties first
+        world.dim_c = 2
+        num_agents = 2
+        num_landmarks = 0
+        # world.collaborative = True
+
+        # initialize all agents in this world
+        self._configure_world(world)
+        # make initial conditions
+        self.reset_world(world)
+
         return world
 
+    def _configure_world(self, world):
+        # initial positions of obstacles and agents
+        policy_agents_data = [
+            {'id':0, 'x':20, 'y':Constants.LANE_2_C, 'vel_x':0.0, 'vel_y':0.0, 'lane_id':2},
+            {'id':1, 'x':5, 'y':Constants.LANE_1_C, 'vel_x':10.0, 'vel_y':0.0, 'lane_id':1}
+        ]
+        scripted_agents_data = [
+            {'id':2, 'x':-20, 'y':Constants.LANE_1_C, 'vel_x':13.0, 'lane_id':1, 'color':Constants.YELLOW}, 
+            {'id':3, 'x':-25, 'y':Constants.LANE_2_C, 'vel_x':12.0, 'lane_id':2, 'color':Constants.YELLOW},
+            {'id':4, 'x':-40, 'y':Constants.LANE_3_C, 'vel_x':10.0, 'lane_id':3, 'color':Constants.YELLOW}
+        ]
+        # set agent initialization data
+        world.policy_agents_data = policy_agents_data
+        world.scripted_agents_data = scripted_agents_data
+
     def reset_world(self, world):
-        pass
+        world.reset()
 
     def benchmark_data(self, agent, world):
         pass
 
-    def reward(self, agent, world):
-        pass
+    def rewards(self, world):
+        """ Get ordered rewards for all policy agents """
+        # check for collisions
+        collisions = world.check_collisions()
+        agent_rewards = [0.0]*len(world.policy_agents_data)
+        # max reward per step is 0.0 for going at max velocity
+        for agent in world.agents:
+            # if in a collision assign large negative reward
+            if collisions[agent.id]:
+                agent_rewards[agent.id] = -250.0
+            else:
+                # reward of 0.0 for going max speed, negative reward otherwise
+                agent_rewards[agent.id] = (agent.velocity.x / agent.max_velocity) - 1.0
+        
+        return agent_rewards
 
-    def observation(self, agent, world):
-        pass
+    def observations(self, world):
+        """ Get ordered observations for all policy agents """
+        observations = [None]*len(world.policy_agents_data)
+        for agent in world.agents:
+            other_pos = [None]*(len(world.all_obstacles)-1) # all agents except the one in focus
+            other_vel = [None]*(len(world.all_obstacles)-1)
+
+            # get positions and velocities of all entities in this agent's reference frame
+            for other_agent in world.all_obstacles:
+                if other_agent is agent: continue
+                other_pos[other_agent.id] = list(other_agent.position - agent.position)
+                other_vel[other_agent.id] = list(other_agent.velocity - agent.velocity)
+            
+            ob_list = [list(agent.position) + other_pos + list(agent.velocity) + other_vel]
+            obv = numpy.array(ob_list, dtype=numpy.float32).flatten()
+
+            # ensure consistent order
+            observations[agent.id] = obv
+        return observations

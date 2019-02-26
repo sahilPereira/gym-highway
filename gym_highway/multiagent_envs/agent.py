@@ -91,6 +91,8 @@ class Car(pygame.sprite.Sprite):
             self.angular_velocity = self.velocity.x / turning_radius
         else:
             self.angular_velocity = 0
+        # update y component as well
+        self.velocity.y = self.angular_velocity
 
         self.position += self.velocity.rotate(-self.angle) * dt
         self.position.y -= degrees(self.angular_velocity) * dt * dt
