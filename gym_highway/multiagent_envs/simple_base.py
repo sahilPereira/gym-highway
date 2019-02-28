@@ -70,7 +70,17 @@ class Scenario(BaseScenario):
         return agent_rewards
 
     def observations(self, world):
-        """ Get ordered observations for all policy agents """
+        """ 
+            Get ordered observations for all policy agents
+
+            Returns observations for all policy agents in order of agent id.
+            Each observation contains relative positions (x,y) of all agents, followed by relative velocities (vx,vy).
+            The first position and velocity correspond to the specific agent at that index.
+            
+            Returns
+            -------
+            [[pos_x1, pos_y1, ..., pos_xn, pos_yn, vel_x1, vel_y1, ..., vel_xn, vel_yn], ... ]
+        """
         observations = [None]*len(world.policy_agents_data)
         for agent in world.agents:
             other_pos = [None]*(len(world.all_obstacles)-1) # all agents except the one in focus
