@@ -49,9 +49,21 @@ class HighwaySimulator:
         self.all_obstacles = None
         # communication channel dimensionality
         self.dim_c = 0
+
+        self.reference_car = None
+        self.action_timer = 0.0
+        self.log_timer = 0.0
+        self.continuous_time = 0.0
+        self.num_obs_collisions = 0
+        self.num_agent_collisions = 0
+        self.collision_count_lock = True
+        self.run_time = 0.0
+
+        self.is_done = None
+        self.reward = None
         
         # reset simulator states
-        self.reset()
+        # self.reset()
 
     # return all entities in the world
     @property
@@ -295,7 +307,8 @@ class HighwaySimulator:
                     rand_vel_x = float(randrange(5, 15))
                     rand_lane_id = obstacle.lane_id
 
-                    new_obstacle = Obstacle(id=randrange(100,1000), x=rand_pos_x, y=rand_pos_y, vel_x=rand_vel_x, vel_y=0.0, lane_id=rand_lane_id, color=Constants.YELLOW)
+                    # use same id for new obstacle so that it maintains its position in the observations
+                    new_obstacle = Obstacle(id=obstacle.id, x=rand_pos_x, y=rand_pos_y, vel_x=rand_vel_x, vel_y=0.0, lane_id=rand_lane_id, color=Constants.YELLOW)
                     self.scripted_agents.add(new_obstacle)
                     self.all_obstacles.add(new_obstacle)
 
@@ -391,6 +404,9 @@ class HighwaySimulator:
         return info
 
     def is_episode_over(self):
+        return self.is_done
+    
+    def get_done(self):
         return self.is_done
 
     def close(self):

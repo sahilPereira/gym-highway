@@ -45,12 +45,11 @@ class Scenario(BaseScenario):
         """ Get ordered info for all policy agents """
         info = [None]*len(world.policy_agents_data)
         for agent in world.agents:
-            data = {"reward": self.current_rewards[agent.id],
+            data = {"rewards": self.current_rewards[agent.id],
                     "run_time": world.run_time, 
                     "num_obs_collisions": world.num_obs_collisions, 
                     "num_agent_collisions": world.num_agent_collisions}
             info[agent.id] = data
-        
         return info
 
     def rewards(self, world):
@@ -80,8 +79,13 @@ class Scenario(BaseScenario):
             # get positions and velocities of all entities in this agent's reference frame
             for other_agent in world.all_obstacles:
                 if other_agent is agent: continue
-                other_pos[other_agent.id] = list(other_agent.position - agent.position)
-                other_vel[other_agent.id] = list(other_agent.velocity - agent.velocity)
+                
+                # find place for agent info in the array
+                placement_idx = other_agent.id
+                if other_agent.id > agent.id: placement_idx -= 1
+                
+                other_pos[placement_idx] = list(other_agent.position - agent.position)
+                other_vel[placement_idx] = list(other_agent.velocity - agent.velocity)
             
             ob_list = [list(agent.position) + other_pos + list(agent.velocity) + other_vel]
             obv = numpy.array(ob_list, dtype=numpy.float32).flatten()
