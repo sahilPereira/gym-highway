@@ -78,7 +78,7 @@ class HighwaySimulator:
     # return all agents controlled by world scripts
     @property
     def scripted_agents(self):
-        return [agent for agent in self.scripted_agents if agent.action_callback is not None]
+        return self.scripted_agents
     
     def set_agents(self, agents):
         """ Set all policy agents used in this world """
