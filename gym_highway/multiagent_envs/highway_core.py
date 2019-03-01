@@ -1,26 +1,16 @@
 import math
 import os
-import pickle
 import random
-from argparse import ArgumentParser
-from enum import Enum
 from math import ceil, copysign, degrees, radians, tan
 from random import randrange
 
 import numpy
-import pandas as pd
 import pygame
 from pygame.math import Vector2
 
+from gym_highway.multiagent_envs import actions
+from gym_highway.multiagent_envs import highway_constants as Constants
 from gym_highway.multiagent_envs.agent import Car, Obstacle
-import gym_highway.multiagent_envs.highway_constants as Constants
-
-class Action(Enum):
-    LEFT = 0
-    RIGHT = 1
-    ACCELERATE = 2
-    MAINTAIN = 3
-    # DECELERATE = 3
 
 class HighwaySimulator:
     def __init__(self, manual=False, inf_obs=False, save=False, render=False):
@@ -124,18 +114,18 @@ class HighwaySimulator:
     # execute the given action for the specified agent
     def executeAction(self, agent, all_obstacles):
         selected_action = agent.action
-        if (selected_action == Action.ACCELERATE) and not agent.do_accelerate:
+        if (selected_action == actions.Action.ACCELERATE) and not agent.do_accelerate:
             self.accelerate(agent)
-        elif (selected_action == Action.MAINTAIN) and not agent.do_maintain:
+        elif (selected_action == actions.Action.MAINTAIN) and not agent.do_maintain:
             self.maintain(agent, all_obstacles)
-        # elif (selected_action == Action.DECELERATE) and not agent.do_decelerate:
+        # elif (selected_action == actions.Action.DECELERATE) and not agent.do_decelerate:
         #     self.decelerate(agent)
 
         agent.acceleration = max(-agent.max_acceleration, min(agent.acceleration, agent.max_acceleration))
 
-        if (selected_action == Action.RIGHT) and not agent.right_mode:
+        if (selected_action == actions.Action.RIGHT) and not agent.right_mode:
             self.turn_right(agent)
-        elif (selected_action == Action.LEFT) and not agent.left_mode:
+        elif (selected_action == actions.Action.LEFT) and not agent.left_mode:
             self.turn_left(agent)
 
         agent.steering = max(-agent.max_steering, min(agent.steering, agent.max_steering))
@@ -223,8 +213,8 @@ class HighwaySimulator:
         self.action_timer = 0.0
         self.log_timer = 0.0
         self.continuous_time = 0.0
-        # self.current_action = Action.MAINTAIN.name
-        self.current_action = Action.ACCELERATE.name
+        # self.current_action = actions.Action.MAINTAIN.name
+        self.current_action = actions.Action.ACCELERATE.name
         self.num_obs_collisions = 0
         self.num_agent_collisions = 0
 

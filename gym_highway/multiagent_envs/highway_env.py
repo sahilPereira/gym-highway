@@ -3,7 +3,7 @@ import numpy as np
 from gym import spaces
 from gym.envs.registration import EnvSpec
 
-from gym_highway.multiagent_envs.highway_core import Action
+from gym_highway.multiagent_envs import actions
 
 # environment for all agents in the multiagent world
 class MultiAgentEnv(gym.Env):
@@ -46,7 +46,7 @@ class MultiAgentEnv(gym.Env):
         obs_dim = len(observation_callback(self.world)[0])
         for agent in self.agents:
             # action space
-            self.action_space[agent.id] = spaces.Discrete(len(Action))
+            self.action_space[agent.id] = spaces.Discrete(len(actions.Action))
             # observation space
             self.observation_space[agent.id] = spaces.Box(low=-np.inf, high=+np.inf, shape=(obs_dim,), dtype=np.float32)
 
@@ -87,7 +87,7 @@ class MultiAgentEnv(gym.Env):
         self.agents = self.world.agents
         # set action for each agent
         for agent in self.agents:
-            agent.action = Action(action_n[agent.id])
+            agent.action = actions.Action(action_n[agent.id])
         
         # advance world state by performing an action
         self.world.act()

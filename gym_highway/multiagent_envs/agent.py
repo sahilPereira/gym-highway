@@ -12,7 +12,8 @@ import pandas as pd
 import pygame
 from pygame.math import Vector2
 
-from gym_highway.multiagent_envs.highway_core import Action
+from gym_highway.multiagent_envs import highway_constants as Constants
+from gym_highway.multiagent_envs import actions
 
 class Car(pygame.sprite.Sprite):
     def __init__(self, id, x, y, vel_x=0.0, vel_y=0.0, lane_id=1, color=Constants.RED, angle=0.0, length=4, max_steering=30, max_acceleration=5.0):
@@ -47,7 +48,7 @@ class Car(pygame.sprite.Sprite):
         self.cruise_vel = 0.0
 
         # action
-        self.action = Action.MAINTAIN
+        self.action = actions.Action.MAINTAIN
         # script behavior to execute
         self.action_callback = None
 

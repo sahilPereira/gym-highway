@@ -6,7 +6,8 @@ from gym.utils import seeding
 import random
 import numpy as np
 
-from gym_highway.multiagent_envs.highway_core import HighwaySimulator, Action
+from gym_highway.multiagent_envs import actions
+from gym_highway.multiagent_envs.highway_core import HighwaySimulator
 import gym_highway.multiagent_envs.highway_constants as Constants
 
 import logging
@@ -20,7 +21,7 @@ class HighwayWorld(object):
         # logging.info("HighwayWorld - Version {}".format(self.__version__))
 
         self.env = self._configure_environment(manual, inf_obs, save, render)
-        self.action_space = spaces.Discrete(len(Action))
+        self.action_space = spaces.Discrete(len(actions.Action))
         num_vehicles = len(self.env.cars_list) + 3 # max 3 obstacles on road at any given time
 
         low = np.array([-60.0, 0.0, 0.0, -20.0]*num_vehicles).flatten()
