@@ -46,18 +46,16 @@ def mlp_model(input, num_outputs, scope, reuse=False, num_units=64, rnn_cell=Non
         return out
 
 def make_env(scenario_name, arglist, benchmark=False):
-    from multiagent.environment import MultiAgentEnv
-    import multiagent.scenarios as scenarios
+    from gym_highway.multiagent_envs.highway_env import MultiAgentEnv
+    from gym_highway.multiagent_envs.simple_base import Scenario
+    # import multiagent.scenarios as scenarios
 
     # load scenario from script
-    scenario = scenarios.load(scenario_name + ".py").Scenario()
+    # scenario = scenarios.load(scenario_name + ".py").Scenario()
     # create world
-    world = scenario.make_world()
+    world = Scenario.make_world()
     # create multiagent environment
-    if benchmark:
-        env = MultiAgentEnv(world, scenario.reset_world, scenario.reward, scenario.observation, scenario.benchmark_data)
-    else:
-        env = MultiAgentEnv(world, scenario.reset_world, scenario.reward, scenario.observation)
+    env = MultiAgentEnv(world, Scenario.reset_world, Scenario.rewards, Scenario.observations, Scenario.benchmark_data, Scenario.dones)
     return env
 
 def get_trainers(env, num_adversaries, obs_shape_n, arglist):

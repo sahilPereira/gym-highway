@@ -41,7 +41,7 @@ class Scenario(BaseScenario):
     def reset_world(self, world):
         world.reset()
 
-    def benchmark_data(self, agent, world):
+    def benchmark_data(self, world):
         """ Get ordered info for all policy agents """
         info = [None]*len(world.policy_agents_data)
         for agent in world.agents:
@@ -51,6 +51,9 @@ class Scenario(BaseScenario):
                     "num_agent_collisions": world.num_agent_collisions}
             info[agent.id] = data
         return info
+    
+    def dones(self, world):
+        return world.get_done()
 
     def rewards(self, world):
         """ Get ordered rewards for all policy agents """
