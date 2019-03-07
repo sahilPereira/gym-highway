@@ -1,8 +1,18 @@
 """
-Helper functions for custom ppo2 model
+General helper functions
 """
 
+import datetime
+import errno
+import os
+import os.path as osp
+import random
+import string
+
 import tensorflow as tf
+
+import models.config as Config
+
 
 def activation_str_function(extra_args):
     '''
@@ -18,3 +28,20 @@ def activation_str_function(extra_args):
     else:
         extra_args['activation'] = tf.nn.sigmoid
     return extra_args
+
+def id_generator(size=10, chars=string.ascii_lowercase + string.digits):
+    return ''.join(random.choice(chars) for _ in range(size))
+
+def create_results_dir(args):
+    current_time = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M")
+    new_run_dir = "{}_{}_{}_{}".format(args.alg, args.env, current_time, id_generator())
+
+    results_dir = "{}/{}".format(Config.results_dir, new_run_dir)
+    results_dir = osp.expanduser(results_dir)
+    if not os.path.exists(results_dir):
+        try:
+            os.makedirs(results_dir, exist_ok=True)
+        except OSError as e:
+            if e.errno != errno.EEXIST:
+                raise
+    return results_dir

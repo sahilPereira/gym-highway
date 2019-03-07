@@ -1,13 +1,15 @@
 import numpy as np
-from gym_highway.multiagent_envs.agent import Car, Obstacle
-from gym_highway.multiagent_envs.highway_world import HighwayWorld
-from gym_highway.multiagent_envs.highway_core import HighwaySimulator
-from multiagent.scenario import BaseScenario
 
+from gym_highway.multiagent_envs import highway_constants as Constants
+from gym_highway.multiagent_envs.agent import Car, Obstacle
+from gym_highway.multiagent_envs.highway_core import HighwaySimulator
+from gym_highway.multiagent_envs.highway_world import HighwayWorld
+from gym_highway.multiagent_envs.multiagent.scenario import BaseScenario
+import models.config as Config
 
 class Scenario(BaseScenario):
-    def make_world(self, **kwargs):
-        world = HighwaySimulator(**kwargs)
+    def make_world(self):
+        world = HighwaySimulator(**Config.env_train_kwargs)
         # set any world properties first
         world.dim_c = 2
         num_agents = 2
@@ -15,7 +17,7 @@ class Scenario(BaseScenario):
         # world.collaborative = True
 
         # initialize all agents in this world
-        self._configure_world(world)
+        self.configure_world(world)
         # make initial conditions
         self.reset_world(world)
         # track rewards for info benchmark_data
@@ -23,7 +25,7 @@ class Scenario(BaseScenario):
 
         return world
 
-    def _configure_world(self, world):
+    def configure_world(self, world):
         # initial positions of obstacles and agents
         policy_agents_data = [
             {'id':0, 'x':20, 'y':Constants.LANE_2_C, 'vel_x':0.0, 'vel_y':0.0, 'lane_id':2},
@@ -100,8 +102,12 @@ class Scenario(BaseScenario):
                 other_pos[placement_idx] = list(other_agent.position - agent.position)
                 other_vel[placement_idx] = list(other_agent.velocity - agent.velocity)
             
-            ob_list = [list(agent.position) + other_pos + list(agent.velocity) + other_vel]
-            obv = numpy.array(ob_list, dtype=numpy.float32).flatten()
+            ob_list = [agent.position] + other_pos + [agent.velocity] + other_vel
+            
+            # print(ob_list)
+            # ob_list should contain pos/vel of current agent and all other agents
+            assert len(ob_list) == len(other_pos)+len(other_vel)+2
+            obv = np.array(ob_list, dtype=np.float32).flatten()
 
             # ensure consistent order
             observations[agent.id] = obv

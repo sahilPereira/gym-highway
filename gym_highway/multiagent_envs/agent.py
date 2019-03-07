@@ -104,10 +104,10 @@ class Car(pygame.sprite.Sprite):
             self.position.x -= s_leader.velocity.x * dt
 
         # prevent the car from leaving the road
-        if self.position.y < int((Constants.CAR_HEIGHT/2)/Constants.ppu):
-            self.position.y = max(self.position.y, int((Constants.CAR_HEIGHT/2)/Constants.ppu))
-        elif self.position.y > int((Constants.HEIGHT - int(Constants.CAR_HEIGHT/2))/Constants.ppu):
-            self.position.y = min(self.position.y, int((Constants.HEIGHT - int((Constants.CAR_HEIGHT/2)/Constants.ppu))/Constants.ppu))
+        if self.position.y < int((Constants.LANE_WIDTH/2)/Constants.ppu):
+            self.position.y = max(self.position.y, int((Constants.LANE_WIDTH/2)/Constants.ppu))
+        elif self.position.y > int((Constants.HEIGHT - int(Constants.LANE_WIDTH/2))/Constants.ppu):
+            self.position.y = min(self.position.y, int((Constants.HEIGHT - int((Constants.LANE_WIDTH/2)/Constants.ppu))/Constants.ppu))
 
         # update rect for collision detection
         self.rect.x = self.position.x * Constants.ppu - self.rect.width / 2

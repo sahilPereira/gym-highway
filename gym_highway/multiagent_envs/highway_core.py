@@ -59,16 +59,6 @@ class HighwaySimulator:
     @property
     def entities(self):
         return self.all_obstacles
-
-    # return all agents controllable by external policies
-    @property
-    def policy_agents(self):
-        return self.agents
-
-    # return all agents controlled by world scripts
-    @property
-    def scripted_agents(self):
-        return self.scripted_agents
     
     def set_agents(self, agents):
         """ Set all policy agents used in this world """

@@ -13,7 +13,7 @@ class MultiAgentEnv(gym.Env):
 
     def __init__(self, world, reset_callback=None, reward_callback=None,
                  observation_callback=None, info_callback=None,
-                 done_callback=None, shared_viewer=True):
+                 done_callback=None, shared_reward=False):
 
         self.world = world
         self.agents = self.world.agents
@@ -25,6 +25,7 @@ class MultiAgentEnv(gym.Env):
         self.observation_callback = observation_callback
         self.info_callback = info_callback
         self.done_callback = done_callback
+        self.shared_reward = shared_reward
 
         num_entities = len(self.world.entities)
         # observations contain all positions (x,y), followed by all velocities (vx,vy)
@@ -34,8 +35,8 @@ class MultiAgentEnv(gym.Env):
         pos_high = np.array([60.0, 8.0]*num_entities).flatten()
         vel_high = np.array([20.0, 20.0]*num_entities).flatten()
         
-        self.low = np.array(pos_low + vel_low)
-        self.high = np.array(pos_high + vel_high)
+        self.low = np.concatenate((pos_low,vel_low))
+        self.high = np.concatenate((pos_high,vel_high))
 
         assert len(self.low) == len(pos_low)+len(vel_low)
         assert len(self.high) == len(pos_high)+len(vel_high)
@@ -62,19 +63,25 @@ class MultiAgentEnv(gym.Env):
         # for agent in self.scripted_agents:
         #     agent.action = agent.action_callback(agent, self)
 
+        self.agents = self.world.agents
+        # set action for each agent
+        for agent in self.agents:
+            agent.action = actions.Action(np.argmax(action_n[agent.id]))
+        
+        # perform num_steps in world
         for _ in range(num_steps):
             reward_n, done_n = self._act(action_n)
 
             # if any agent is done, break
-            if True in done_n:
+            if any(done_n):
                 break
 
         obs_n = self._get_obs_norm()
         info_n = {'n': self._get_info()}
         
         # all agents get total reward in cooperative case
-        reward = np.sum(reward_n)
         if self.shared_reward:
+            reward = np.sum(reward_n)
             reward_n = [reward] * self.n
         
         # round the reward
@@ -84,18 +91,9 @@ class MultiAgentEnv(gym.Env):
 
     def _act(self, action_n):
         """ Take one step in the world and return rewards and done signals """
-        self.agents = self.world.agents
-        # set action for each agent
-        for agent in self.agents:
-            agent.action = actions.Action(action_n[agent.id])
-        
         # advance world state by performing an action
         self.world.act()
-
-        reward_n = self._get_reward()
-        done_n = self._get_done()
-
-        return reward_n, done_n
+        return self._get_reward(), self._get_done()
 
     def reset(self):
         # reset world
@@ -105,10 +103,10 @@ class MultiAgentEnv(gym.Env):
         return self._get_obs_norm()
 
     # get info used for benchmarking
-    def _get_info(self, agent):
+    def _get_info(self):
         if self.info_callback is None:
             return [{}]*self.n
-        return self.info_callback(agent, self.world)
+        return self.info_callback(self.world)
 
     # get observation for a particular agent
     def _get_obs(self):
@@ -118,13 +116,13 @@ class MultiAgentEnv(gym.Env):
 
     # get dones for a particular agent
     # unused right now -- agents are allowed to go beyond the viewing screen
-    def _get_done(self, agent):
+    def _get_done(self):
         if self.done_callback is None:
             return [False]*self.n
         return self.done_callback(self.world)
 
     # get reward for a particular agent
-    def _get_reward(self, agent):
+    def _get_reward(self):
         if self.reward_callback is None:
             return [0.0]*self.n
         return self.reward_callback(self.world)
