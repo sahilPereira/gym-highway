@@ -29,6 +29,7 @@ def parse_args():
     parser.add_argument("--scenario", type=str, default="simple", help="name of the scenario script")
     parser.add_argument("--max-episode-len", type=int, default=240, help="maximum episode length")
     parser.add_argument("--num-episodes", type=int, default=60000, help="number of episodes")
+    parser.add_argument("--num-agents", type=int, default=1, help="number of total agents")
     parser.add_argument("--num-adversaries", type=int, default=0, help="number of adversaries")
     parser.add_argument("--good-policy", type=str, default="maddpg", help="policy for good agents")
     parser.add_argument("--adv-policy", type=str, default="maddpg", help="policy of adversaries")
@@ -37,10 +38,11 @@ def parse_args():
     parser.add_argument("--gamma", type=float, default=0.95, help="discount factor")
     parser.add_argument("--batch-size", type=int, default=1024, help="number of episodes to optimize at the same time")
     parser.add_argument("--num-units", type=int, default=256, help="number of units in the mlp")
+    parser.add_argument("--rb-size", type=int, default=24e4, help="replay buffer size")
     # Checkpointing
     parser.add_argument("--exp-name", type=str, default=None, help="name of the experiment")
     parser.add_argument("--save-dir", type=str, default="/tmp/policy/", help="directory in which training state and model should be saved")
-    parser.add_argument("--save-rate", type=int, default=60000, help="save model once every time this many episodes are completed")
+    parser.add_argument("--save-rate", type=int, default=10000, help="save model once every time this many episodes are completed")
     parser.add_argument("--load-dir", type=str, default="", help="directory in which training state and model are loaded")
     parser.add_argument('--save_path', help='Location to save trained model', default=None, type=str)
     parser.add_argument('--save_model', default=True, action='store_false')
@@ -52,6 +54,7 @@ def parse_args():
     parser.add_argument("--benchmark-iters", type=int, default=1000, help="number of iterations run for benchmarking")
     parser.add_argument("--benchmark-dir", type=str, default="./benchmark_files/", help="directory where benchmark data is saved")
     parser.add_argument("--plots-dir", type=str, default="./learning_curves/", help="directory where plot data is saved")
+    parser.add_argument('--play', default=False, action='store_true')
     return parser.parse_args()
 
 def mlp_model(input, num_outputs, scope, reuse=False, num_units=256, rnn_cell=None):
@@ -67,13 +70,11 @@ def mlp_model(input, num_outputs, scope, reuse=False, num_units=256, rnn_cell=No
 def make_env(scenario_name, arglist, benchmark=False):
     from gym_highway.multiagent_envs.highway_env import MultiAgentEnv
     from gym_highway.multiagent_envs.simple_base import Scenario
-    # import multiagent.scenarios as scenarios
 
-    # load scenario from script
-    # scenario = scenarios.load(scenario_name + ".py").Scenario()
     scenario = Scenario()
     # create world
-    world = scenario.make_world()
+    world_config = Config.env_play_kwargs if arglist.play else Config.env_train_kwargs
+    world = scenario.make_world(arglist, world_config)
     # create multiagent environment
     env = MultiAgentEnv(world, scenario.reset_world, scenario.rewards, scenario.observations, scenario.benchmark_data, scenario.dones)
     return env
@@ -159,6 +160,7 @@ def train(arglist):
                 # logger.logkv(Config.tensorboard_rootdir+"serial_timesteps", train_step)
                 # logger.logkv(Config.tensorboard_rootdir+"num_update", update)
                 logger.logkv(Config.tensorboard_rootdir+"total_timesteps", train_step)
+                logger.logkv(Config.tensorboard_rootdir+"current_episode", int(train_step/arglist.max_episode_len))
                 # logger.logkv(Config.tensorboard_rootdir+"fps", fps)
                 # logger.logkv(Config.tensorboard_rootdir+"explained_variance", float(ev))
                 logger.logkv(Config.tensorboard_rootdir+'ep_reward_mean', safemean([epinfo['r'] for epinfo in epinfobuf]))
@@ -197,8 +199,15 @@ def train(arglist):
             for agent in trainers:
                 loss = agent.update(trainers, train_step)
 
+                # log loss info for each agent
+                if (train_step % arglist.log_interval == 0) and loss:
+                    lossvals = [np.mean(data, axis=0) if isinstance(data, list) else data for data in loss]
+                    for (lossval, lossname) in zip(lossvals, agent.loss_names):
+                        log_key = "{}{}/{}".format(Config.tensorboard_rootdir, lossname, agent.name)
+                        logger.logkv(log_key, lossval)
+
             # save model if at save_rate step or if its the first train_step
-            save_model = arglist.save_rate and (train_step % arglist.save_rate == 0)
+            save_model = arglist.save_rate and ((train_step % arglist.save_rate == 0) or (train_step == total_timesteps))
             # only save model if logger dir specified and current node rank is 0 (multithreading)
             save_model &= logger.get_dir() and (MPI is None or MPI.COMM_WORLD.Get_rank() == 0)
             if save_model:

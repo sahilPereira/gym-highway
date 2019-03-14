@@ -8,16 +8,16 @@ from gym_highway.multiagent_envs.multiagent.scenario import BaseScenario
 import models.config as Config
 
 class Scenario(BaseScenario):
-    def make_world(self):
-        world = HighwaySimulator(**Config.env_train_kwargs)
+    def make_world(self, arglist, world_kw_args):
+        world = HighwaySimulator(**world_kw_args)
         # set any world properties first
         world.dim_c = 2
-        num_agents = 2
-        num_landmarks = 0
+        num_agents = arglist.num_agents
+        num_obstacles = 3
         # world.collaborative = True
 
         # initialize all agents in this world
-        self.configure_world(world)
+        self.configure_world(world, num_agents, num_obstacles)
         # make initial conditions
         self.reset_world(world)
         # track rewards for info benchmark_data
@@ -25,20 +25,20 @@ class Scenario(BaseScenario):
 
         return world
 
-    def configure_world(self, world):
+    def configure_world(self, world, n_agents, n_obstacles):
         # initial positions of obstacles and agents
         policy_agents_data = [
             {'id':0, 'x':20, 'y':Constants.LANE_2_C, 'vel_x':0.0, 'vel_y':0.0, 'lane_id':2},
             {'id':1, 'x':5, 'y':Constants.LANE_1_C, 'vel_x':10.0, 'vel_y':0.0, 'lane_id':1}
         ]
         scripted_agents_data = [
-            {'id':2, 'x':-20, 'y':Constants.LANE_1_C, 'vel_x':13.0, 'lane_id':1, 'color':Constants.YELLOW}, 
-            {'id':3, 'x':-25, 'y':Constants.LANE_2_C, 'vel_x':12.0, 'lane_id':2, 'color':Constants.YELLOW},
-            {'id':4, 'x':-40, 'y':Constants.LANE_3_C, 'vel_x':10.0, 'lane_id':3, 'color':Constants.YELLOW}
+            {'id':n_agents, 'x':-20, 'y':Constants.LANE_1_C, 'vel_x':13.0, 'lane_id':1, 'color':Constants.YELLOW}, 
+            {'id':n_agents+1, 'x':-25, 'y':Constants.LANE_2_C, 'vel_x':12.0, 'lane_id':2, 'color':Constants.YELLOW},
+            {'id':n_agents+2, 'x':-40, 'y':Constants.LANE_3_C, 'vel_x':10.0, 'lane_id':3, 'color':Constants.YELLOW}
         ]
         # set agent initialization data
-        world.policy_agents_data = policy_agents_data
-        world.scripted_agents_data = scripted_agents_data
+        world.policy_agents_data = policy_agents_data[:n_agents]
+        world.scripted_agents_data = scripted_agents_data[:n_obstacles]
 
     def reset_world(self, world):
         world.reset()

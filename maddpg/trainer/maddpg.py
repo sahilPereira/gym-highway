@@ -144,9 +144,10 @@ class MADDPGAgentTrainer(AgentTrainer):
             num_units=args.num_units
         )
         # Create experience buffer
-        self.replay_buffer = ReplayBuffer(1e6)
+        self.replay_buffer = ReplayBuffer(args.rb_size)
         self.max_replay_buffer_len = args.batch_size * args.max_episode_len
         self.replay_sample_index = None
+        self.loss_names = ['q_loss', 'p_loss', 'mean_target_q', 'mean_rew', 'mean_target_q_next', 'std_target_q']
 
     def action(self, obs):
         return self.act(obs[None])[0]

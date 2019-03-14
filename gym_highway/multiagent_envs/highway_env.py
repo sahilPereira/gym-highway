@@ -29,8 +29,9 @@ class MultiAgentEnv(gym.Env):
 
         num_entities = len(self.world.entities)
         # observations contain all positions (x,y), followed by all velocities (vx,vy)
-        pos_low = np.array([-60.0, 0.0]*num_entities).flatten()
-        vel_low = np.array([0.0, -20.0]*num_entities).flatten()
+        # using relative positions and velocities for bounding
+        pos_low = np.array([-60.0, -8.0]*num_entities).flatten()
+        vel_low = np.array([-20.0, -20.0]*num_entities).flatten()
 
         pos_high = np.array([60.0, 8.0]*num_entities).flatten()
         vel_high = np.array([20.0, 20.0]*num_entities).flatten()
