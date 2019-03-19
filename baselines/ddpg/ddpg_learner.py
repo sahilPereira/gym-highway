@@ -1,3 +1,4 @@
+import functools
 from copy import copy
 from functools import reduce
 
@@ -5,10 +6,14 @@ import numpy as np
 import tensorflow as tf
 import tensorflow.contrib as tc
 
+import baselines.common.tf_util as U
 from baselines import logger
 from baselines.common.mpi_adam import MpiAdam
-import baselines.common.tf_util as U
 from baselines.common.mpi_running_mean_std import RunningMeanStd
+from baselines.common.tf_util import (get_session, load_variables,
+                                      save_variables)
+from maddpg.common.distributions import make_pdtype
+
 try:
     from mpi4py import MPI
 except ImportError:
@@ -73,7 +78,12 @@ class DDPG(object):
         self.obs1 = tf.placeholder(tf.float32, shape=(None,) + observation_shape, name='obs1')
         self.terminals1 = tf.placeholder(tf.float32, shape=(None, 1), name='terminals1')
         self.rewards = tf.placeholder(tf.float32, shape=(None, 1), name='rewards')
-        self.actions = tf.placeholder(tf.float32, shape=(None,) + action_shape, name='actions')
+        # self.actions = tf.placeholder(tf.float32, shape=(None,) + action_shape, name='actions')
+        
+        # create distribtuions
+        act_pdtype_n = make_pdtype(action_shape)
+        self.actions = act_pdtype_n.sample_placeholder([None], name='actions')
+
         self.critic_target = tf.placeholder(tf.float32, shape=(None, 1), name='critic_target')
         self.param_noise_stddev = tf.placeholder(tf.float32, shape=(), name='param_noise_stddev')
 
@@ -279,9 +289,12 @@ class DDPG(object):
 
     def store_transition(self, obs0, action, reward, obs1, terminal1):
         reward *= self.reward_scale
-
+        # print(action)
         B = obs0.shape[0]
         for b in range(B):
+            # print(obs0[b])
+            # print(action[b])
+            # print(reward[b])
             self.memory.append(obs0[b], action[b], reward[b], obs1[b], terminal1[b])
             if self.normalize_observations:
                 self.obs_rms.update(np.array([obs0[b]]))
@@ -336,6 +349,10 @@ class DDPG(object):
         self.actor_optimizer.sync()
         self.critic_optimizer.sync()
         self.sess.run(self.target_init_updates)
+
+        # setup saving and loading functions
+        self.save = functools.partial(save_variables, sess=sess)
+        self.load = functools.partial(load_variables, sess=sess)
 
     def update_target_net(self):
         self.sess.run(self.target_soft_updates)

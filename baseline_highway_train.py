@@ -43,11 +43,11 @@ def train(args, extra_args):
     total_timesteps = int(args.num_timesteps)
     seed = args.seed
 
-    if extra_args["use_icm"]:
-        # if using ICM use ppo2_icm submodule in ppo2
-        learn = get_alg_module(args.alg, Config.icm_submodule).learn
-    else:
-        learn = get_learn_function(args.alg)
+    # if extra_args["use_icm"]:
+    #     # if using ICM use ppo2_icm submodule in ppo2
+    #     learn = get_alg_module(args.alg, Config.icm_submodule).learn
+    # else:
+    learn = get_learn_function(args.alg)
     
     alg_kwargs = get_learn_function_defaults(args.alg, env_type)
     alg_kwargs.update(extra_args)
@@ -237,7 +237,8 @@ def main(args):
     args, unknown_args = arg_parser.parse_known_args(args)
     
     # add custom training arguments for ppo2 algorithm
-    extra_args = Config.ppo2_train_args
+    # extra_args = Config.ppo2_train_args
+    extra_args = Config.ddpg_train_args
     extra_args = activation_str_function(extra_args)
 
     # update extra_args with command line argument overrides

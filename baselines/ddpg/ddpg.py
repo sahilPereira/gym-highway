@@ -1,4 +1,5 @@
 import os
+import os.path as osp
 import time
 from collections import deque
 import pickle
@@ -9,6 +10,7 @@ from baselines.ddpg.memory import Memory
 from baselines.ddpg.noise import AdaptiveParamNoiseSpec, NormalActionNoise, OrnsteinUhlenbeckActionNoise
 from baselines.common import set_global_seeds
 import baselines.common.tf_util as U
+from models import config as Config
 
 from baselines import logger
 import numpy as np
@@ -42,6 +44,7 @@ def learn(network, env,
           tau=0.01,
           eval_env=None,
           param_noise_adaption_interval=50,
+          save_interval=100,
           **network_kwargs):
 
     set_global_seeds(seed)
@@ -57,10 +60,14 @@ def learn(network, env,
     else:
         rank = 0
 
-    nb_actions = env.action_space.shape[-1]
-    assert (np.abs(env.action_space.low) == env.action_space.high).all()  # we assume symmetric actions.
+    # print(env.action_space.shape)
+    # print(env.action_space.n)
+    # nb_actions = env.action_space.shape[-1]
+    nb_actions = env.action_space.n
+    # assert (np.abs(env.action_space.low) == env.action_space.high).all()  # we assume symmetric actions.
 
-    memory = Memory(limit=int(1e6), action_shape=env.action_space.shape, observation_shape=env.observation_space.shape)
+    # print(env.action_space.shape)
+    memory = Memory(limit=int(1e6), action_shape=(env.action_space.n,), observation_shape=env.observation_space.shape)
     critic = Critic(network=network, **network_kwargs)
     actor = Actor(nb_actions, network=network, **network_kwargs)
 
@@ -83,10 +90,11 @@ def learn(network, env,
             else:
                 raise RuntimeError('unknown noise type "{}"'.format(current_noise_type))
 
-    max_action = env.action_space.high
+    # max_action = env.action_space.high
+    max_action = 1
     logger.info('scaling actions by {} before executing in env'.format(max_action))
 
-    agent = DDPG(actor, critic, memory, env.observation_space.shape, env.action_space.shape,
+    agent = DDPG(actor, critic, memory, env.observation_space.shape, env.action_space,
         gamma=gamma, tau=tau, normalize_returns=normalize_returns, normalize_observations=normalize_observations,
         batch_size=batch_size, action_noise=action_noise, param_noise=param_noise, critic_l2_reg=critic_l2_reg,
         actor_lr=actor_lr, critic_lr=critic_lr, enable_popart=popart, clip_norm=clip_norm,
@@ -134,14 +142,19 @@ def learn(network, env,
             for t_rollout in range(nb_rollout_steps):
                 # Predict next action.
                 action, q, _, _ = agent.step(obs, apply_noise=True, compute_Q=True)
+                # print(action)
+                # print(np.argmax(max_action * action, axis=1))
 
                 # Execute next action.
                 if rank == 0 and render:
                     env.render()
 
                 # max_action is of dimension A, whereas action is dimension (nenvs, A) - the multiplication gets broadcasted to the batch
-                new_obs, r, done, info = env.step(max_action * action)  # scale for execution in env (as far as DDPG is concerned, every action is in [-1, 1])
+                new_obs, r, done, info = env.step(np.argmax(max_action * action, axis=1))  # scale for execution in env (as far as DDPG is concerned, every action is in [-1, 1])
                 # note these outputs are batched from vecenv
+
+                # print(new_obs)
+                # print(r)
 
                 t += 1
                 if rank == 0 and render:
@@ -150,7 +163,7 @@ def learn(network, env,
                 episode_step += 1
 
                 # Book-keeping.
-                epoch_actions.append(action)
+                epoch_actions.append(np.argmax(action, axis=1))
                 epoch_qs.append(q)
                 agent.store_transition(obs, action, r, new_obs, done) #the batched data will be unrolled in memory.py's append.
 
@@ -168,8 +181,6 @@ def learn(network, env,
                         episodes += 1
                         if nenvs == 1:
                             agent.reset()
-
-
 
             # Train.
             epoch_actor_losses = []
@@ -194,7 +205,7 @@ def learn(network, env,
                 eval_episode_reward = np.zeros(nenvs_eval, dtype = np.float32)
                 for t_rollout in range(nb_eval_steps):
                     eval_action, eval_q, _, _ = agent.step(eval_obs, apply_noise=False, compute_Q=True)
-                    eval_obs, eval_r, eval_done, eval_info = eval_env.step(max_action * eval_action)  # scale for execution in env (as far as DDPG is concerned, every action is in [-1, 1])
+                    eval_obs, eval_r, eval_done, eval_info = eval_env.step(np.argmax(max_action * action, axis=1))  # scale for execution in env (as far as DDPG is concerned, every action is in [-1, 1])
                     if render_eval:
                         eval_env.render()
                     eval_episode_reward += eval_r
@@ -216,25 +227,25 @@ def learn(network, env,
         duration = time.time() - start_time
         stats = agent.get_stats()
         combined_stats = stats.copy()
-        combined_stats['rollout/return'] = np.mean(epoch_episode_rewards)
-        combined_stats['rollout/return_history'] = np.mean(episode_rewards_history)
-        combined_stats['rollout/episode_steps'] = np.mean(epoch_episode_steps)
-        combined_stats['rollout/actions_mean'] = np.mean(epoch_actions)
-        combined_stats['rollout/Q_mean'] = np.mean(epoch_qs)
-        combined_stats['train/loss_actor'] = np.mean(epoch_actor_losses)
-        combined_stats['train/loss_critic'] = np.mean(epoch_critic_losses)
-        combined_stats['train/param_noise_distance'] = np.mean(epoch_adaptive_distances)
-        combined_stats['total/duration'] = duration
-        combined_stats['total/steps_per_second'] = float(t) / float(duration)
-        combined_stats['total/episodes'] = episodes
-        combined_stats['rollout/episodes'] = epoch_episodes
-        combined_stats['rollout/actions_std'] = np.std(epoch_actions)
+        combined_stats[Config.tensorboard_rootdir+'rollout/return'] = np.mean(epoch_episode_rewards)
+        combined_stats[Config.tensorboard_rootdir+'rollout/return_history'] = np.mean(episode_rewards_history)
+        combined_stats[Config.tensorboard_rootdir+'rollout/episode_steps'] = np.mean(epoch_episode_steps)
+        combined_stats[Config.tensorboard_rootdir+'rollout/actions_mean'] = np.mean(epoch_actions)
+        combined_stats[Config.tensorboard_rootdir+'rollout/Q_mean'] = np.mean(epoch_qs)
+        combined_stats[Config.tensorboard_rootdir+'train/loss_actor'] = np.mean(epoch_actor_losses)
+        combined_stats[Config.tensorboard_rootdir+'train/loss_critic'] = np.mean(epoch_critic_losses)
+        combined_stats[Config.tensorboard_rootdir+'train/param_noise_distance'] = np.mean(epoch_adaptive_distances)
+        combined_stats[Config.tensorboard_rootdir+'total/duration'] = duration
+        combined_stats[Config.tensorboard_rootdir+'total/steps_per_second'] = float(t) / float(duration)
+        combined_stats[Config.tensorboard_rootdir+'total/episodes'] = episodes
+        combined_stats[Config.tensorboard_rootdir+'rollout/episodes'] = epoch_episodes
+        combined_stats[Config.tensorboard_rootdir+'rollout/actions_std'] = np.std(epoch_actions)
         # Evaluation statistics.
         if eval_env is not None:
-            combined_stats['eval/return'] = eval_episode_rewards
-            combined_stats['eval/return_history'] = np.mean(eval_episode_rewards_history)
-            combined_stats['eval/Q'] = eval_qs
-            combined_stats['eval/episodes'] = len(eval_episode_rewards)
+            combined_stats[Config.tensorboard_rootdir+'eval/return'] = eval_episode_rewards
+            combined_stats[Config.tensorboard_rootdir+'eval/return_history'] = np.mean(eval_episode_rewards_history)
+            combined_stats[Config.tensorboard_rootdir+'eval/Q'] = eval_qs
+            combined_stats[Config.tensorboard_rootdir+'eval/episodes'] = len(eval_episode_rewards)
         def as_scalar(x):
             if isinstance(x, np.ndarray):
                 assert x.size == 1
@@ -251,8 +262,8 @@ def learn(network, env,
         combined_stats = {k : v / mpi_size for (k,v) in zip(combined_stats.keys(), combined_stats_sums)}
 
         # Total statistics.
-        combined_stats['total/epochs'] = epoch + 1
-        combined_stats['total/steps'] = t
+        combined_stats[Config.tensorboard_rootdir+'total/epochs'] = epoch + 1
+        combined_stats[Config.tensorboard_rootdir+'total/steps'] = t
 
         for key in sorted(combined_stats.keys()):
             logger.record_tabular(key, combined_stats[key])
@@ -260,14 +271,20 @@ def learn(network, env,
         if rank == 0:
             logger.dump_tabular()
         logger.info('')
-        logdir = logger.get_dir()
-        if rank == 0 and logdir:
-            if hasattr(env, 'get_state'):
-                with open(os.path.join(logdir, 'env_state.pkl'), 'wb') as f:
-                    pickle.dump(env.get_state(), f)
-            if eval_env and hasattr(eval_env, 'get_state'):
-                with open(os.path.join(logdir, 'eval_env_state.pkl'), 'wb') as f:
-                    pickle.dump(eval_env.get_state(), f)
-
+        # logdir = logger.get_dir()
+        # if rank == 0 and logdir:
+        #     if hasattr(env, 'get_state'):
+        #         with open(os.path.join(logdir, 'env_state.pkl'), 'wb') as f:
+        #             pickle.dump(env.get_state(), f)
+        #     if eval_env and hasattr(eval_env, 'get_state'):
+        #         with open(os.path.join(logdir, 'eval_env_state.pkl'), 'wb') as f:
+        #             pickle.dump(eval_env.get_state(), f)
+        
+        if save_interval and (epoch % save_interval == 0 or epoch == 1) and logger.get_dir() and (MPI is None or MPI.COMM_WORLD.Get_rank() == 0):
+            checkdir = osp.join(logger.get_dir(), 'checkpoints')
+            os.makedirs(checkdir, exist_ok=True)
+            savepath = osp.join(checkdir, '%.5i'%epoch)
+            print('Saving to', savepath)
+            agent.save(savepath)
 
     return agent
