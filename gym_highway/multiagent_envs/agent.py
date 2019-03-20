@@ -67,6 +67,35 @@ class Car(pygame.sprite.Sprite):
 
         return sim_car
 
+    def update_c(self, dt, s_leader):
+        # dont drive backwards
+        self.velocity += (self.acceleration * dt, 0)
+        self.velocity.x = max(0.0, min(self.velocity.x, self.max_velocity))
+
+        if self.steering:
+            turning_radius = self.length / tan(radians(self.steering))
+            angular_velocity = self.velocity.x / turning_radius
+        else:
+            angular_velocity = 0
+
+        self.position += self.velocity.rotate(-self.angle) * dt
+        self.angle += degrees(angular_velocity) * dt
+
+        if self.id == s_leader.id:
+            self.position.x = 10
+        else:
+            self.position.x -= s_leader.velocity.x * dt
+
+        # prevent the car from leaving the road
+        if self.position.y < int((Constants.LANE_WIDTH/2)/Constants.ppu):
+            self.position.y = max(self.position.y, int((Constants.LANE_WIDTH/2)/Constants.ppu))
+        elif self.position.y > int((Constants.HEIGHT - int(Constants.LANE_WIDTH/2))/Constants.ppu):
+            self.position.y = min(self.position.y, int((Constants.HEIGHT - int((Constants.LANE_WIDTH/2)/Constants.ppu))/Constants.ppu))
+
+        # update rect for collision detection
+        self.rect.x = self.position.x * Constants.ppu - self.rect.width / 2
+        self.rect.y = self.position.y * Constants.ppu - self.rect.height / 2
+
     def update(self, dt, s_leader):
         
         if self.do_accelerate:
