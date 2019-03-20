@@ -1,18 +1,19 @@
 import numpy as np
 
+import models.config as Config
 from gym_highway.multiagent_envs import highway_constants as Constants
 from gym_highway.multiagent_envs.agent import Car, Obstacle
 from gym_highway.multiagent_envs.highway_core import HighwaySimulator
 from gym_highway.multiagent_envs.highway_world import HighwayWorld
 from gym_highway.multiagent_envs.multiagent.scenario import BaseScenario
-import models.config as Config
+
 
 class Scenario(BaseScenario):
-    def make_world(self, arglist, world_kw_args):
+    def make_world(self, num_agents, world_kw_args):
         world = HighwaySimulator(**world_kw_args)
         # set any world properties first
         world.dim_c = 2
-        num_agents = arglist.num_agents
+        num_agents = num_agents
         num_obstacles = 3
         # world.collaborative = True
 

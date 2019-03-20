@@ -4,6 +4,8 @@ from gym import spaces
 from gym.envs.registration import EnvSpec
 
 from gym_highway.multiagent_envs import actions
+from gym_highway.multiagent_envs.simple_base import Scenario
+
 
 # environment for all agents in the multiagent world
 class MultiAgentEnv(gym.Env):
@@ -11,20 +13,22 @@ class MultiAgentEnv(gym.Env):
         'render.modes' : ['human', 'rgb_array']
     }
 
-    def __init__(self, world, reset_callback=None, reward_callback=None,
+    def __init__(self, world_config, num_agents=1, reset_callback=None, reward_callback=None,
                  observation_callback=None, info_callback=None,
                  done_callback=None, shared_reward=False):
 
-        self.world = world
+        scenario = Scenario()
+        # create world
+        self.world = scenario.make_world(num_agents, world_config)
         self.agents = self.world.agents
         # set required vectorized gym env property
         self.n = len(world.agents)
         # scenario callbacks
-        self.reset_callback = reset_callback
-        self.reward_callback = reward_callback
-        self.observation_callback = observation_callback
-        self.info_callback = info_callback
-        self.done_callback = done_callback
+        self.reset_callback = scenario.reset_world
+        self.reward_callback = scenario.rewards
+        self.observation_callback = scenario.observations
+        self.info_callback = scenario.benchmark_data
+        self.done_callback = scenario.dones
         self.shared_reward = shared_reward
 
         num_entities = len(self.world.entities)

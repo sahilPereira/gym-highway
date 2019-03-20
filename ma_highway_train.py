@@ -88,17 +88,11 @@ def mlp_model(input, num_outputs, scope, reuse=False, num_units=256, rnn_cell=No
         out = layers.fully_connected(out, num_outputs=num_outputs, activation_fn=None)
         return out
 
-def make_env(scenario_name, arglist, benchmark=False):
-    from gym_highway.multiagent_envs.highway_env import MultiAgentEnv
-    from gym_highway.multiagent_envs.simple_base import Scenario
-
-    scenario = Scenario()
-    # create world
+def make_env_config(arglist, benchmark=False):
+    # get world config
     world_config = Config.env_play_kwargs if arglist.play else Config.env_train_kwargs
-    world = scenario.make_world(arglist, world_config)
-    # create multiagent environment
-    env = MultiAgentEnv(world, scenario.reset_world, scenario.rewards, scenario.observations, scenario.benchmark_data, scenario.dones)
-    return env
+    # return multiagent environment config
+    return {'world_config':world_config, 'num_agents':arglist.num_agents, 'shared_reward':False}
 
 def get_trainers(env, num_adversaries, obs_shape_n, arglist):
     trainers = []
@@ -321,12 +315,17 @@ def learn(env, seed, total_timesteps, arglist):
 def safemean(xs):
     return np.nan if len(xs) == 0 else np.mean(xs)
 
+def register_env(c_id, c_entry_point, c_kwargs):
+    '''
+    Register a gym environment with new id, entry point and kwargs
+    '''
+    register( id=c_id, entry_point=c_entry_point, kwargs=c_kwargs)
+
 if __name__ == '__main__':
     args = sys.argv
     arg_parser = parse_args()
     args, unknown_args = arg_parser.parse_known_args(args)
     
-    # ------------------------------------------------------------------------------------------
     # add custom training arguments for ppo2 algorithm
     # TODO: update to MA specific activation functions
     extra_args = Config.ddpg_train_args
@@ -349,14 +348,8 @@ if __name__ == '__main__':
         logger.configure(dir=results_dir, format_strs=Config.baselines_log_format)
         rank = MPI.COMM_WORLD.Get_rank()
 
-    # TODO: update the registers to use the correct environment
-    if args.play:
-        register_env(Config.ma_env_id, Config.ma_env_entry_point, Config.env_play_kwargs)
-    else:
-        register_env(Config.ma_env_id, Config.ma_env_entry_point, Config.env_train_kwargs)
+    # register the multi-agent env using the proper world and scenario settings
+    register_env(Config.ma_env_id, Config.ma_env_entry_point, make_env_config(args))
 
     model, env = train(args, extra_args)
     env.close()
-    # ------------------------------------------------------------------------------------------
-
-    train(arglist)
