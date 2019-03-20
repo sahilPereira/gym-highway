@@ -1,27 +1,48 @@
 import argparse
+import multiprocessing
 import os
 import os.path as osp
 import pickle
+import sys
 import time
+from collections import deque
 
+import gym
 import numpy as np
 import tensorflow as tf
 import tensorflow.contrib.layers as layers
+from gym.envs.registration import register
 
 import maddpg.common.tf_util as U
 import models.config as Config
 from baselines import logger
+from baselines.common.cmd_util import (common_arg_parser, make_env,
+                                       make_vec_env, parse_unknown_args)
+from baselines.common.tf_util import get_session
 from maddpg.trainer.maddpg import MADDPGAgentTrainer
-from models.utils import create_results_dir
-from collections import deque
+from models.utils import (activation_str_function, create_results_dir,
+                          parse_cmdline_kwargs, save_configs)
+
+# import gym_highway
+# from gym_highway.envs import HighwayEnv
+
+
 
 try:
     from mpi4py import MPI
 except ImportError:
     MPI = None
 
+_game_envs = defaultdict(set)
+
+def arg_parser():
+    """
+    Create an empty argparse.ArgumentParser.
+    """
+    return argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+
 def parse_args():
-    parser = argparse.ArgumentParser("Reinforcement Learning experiments for multiagent environments")
+    parser = arg_parser()
     # Environment
     parser.add_argument('--env', help='environment ID', type=str, default=Config.env_id)
     parser.add_argument('--seed', help='RNG seed', type=int, default=None)
@@ -55,7 +76,7 @@ def parse_args():
     parser.add_argument("--benchmark-dir", type=str, default="./benchmark_files/", help="directory where benchmark data is saved")
     parser.add_argument("--plots-dir", type=str, default="./learning_curves/", help="directory where plot data is saved")
     parser.add_argument('--play', default=False, action='store_true')
-    return parser.parse_args()
+    return parser
 
 def mlp_model(input, num_outputs, scope, reuse=False, num_units=256, rnn_cell=None):
     # This model takes as input an observation and returns values of all actions
@@ -93,8 +114,85 @@ def get_trainers(env, num_adversaries, obs_shape_n, arglist):
             local_q_func=(arglist.good_policy=='ddpg')))
     return trainers
 
+def train(args, extra_args):
+    env_type, env_id = get_env_type(args.env)
+    # print('env_type: {}'.format(env_type))
 
-def train(arglist):
+    total_timesteps = int(args.num_timesteps)
+    seed = args.seed
+
+    # TODO: not required right now, might need in future to make learn function more modular
+    alg_kwargs = {}
+    # learn = get_learn_function(args.alg)
+    # alg_kwargs = get_learn_function_defaults(args.alg, env_type)
+    # alg_kwargs.update(extra_args)
+
+    env = build_env(args)
+
+    # TODO: removed since we dont save any video intervals
+    # if args.save_video_interval != 0:
+    #     env = VecVideoRecorder(env, osp.join(logger.Logger.CURRENT.dir, "videos"), record_video_trigger=lambda x: x % args.save_video_interval == 0, video_length=args.save_video_length)
+
+    # if args.network:
+    #     alg_kwargs['network'] = args.network
+    # else:
+    #     if alg_kwargs.get('network') is None:
+    #         alg_kwargs['network'] = get_default_network(env_type)
+
+    print('Training {} on {}:{} with arguments \n{}'.format(args.alg, env_type, env_id, alg_kwargs))
+
+    model = learn(
+        env=env,
+        seed=seed,
+        total_timesteps=total_timesteps,
+        args
+    )
+    return model, env
+
+def build_env(args):
+    '''
+    Build a vector of n environments
+    '''
+    ncpu = multiprocessing.cpu_count()
+    if sys.platform == 'darwin': ncpu //= 2
+    nenv = args.num_env or ncpu
+    alg = args.alg
+    seed = args.seed
+
+    env_type, env_id = get_env_type(args.env)
+
+    config = tf.ConfigProto(allow_soft_placement=True,
+                            intra_op_parallelism_threads=1,
+                            inter_op_parallelism_threads=1)
+    
+    config.gpu_options.allow_growth = True
+    get_session(config=config)
+
+    flatten_dict_observations = alg not in {'her'}
+    env = make_vec_env(env_id, env_type, nenv, seed, reward_scale=args.reward_scale, flatten_dict_observations=flatten_dict_observations)
+
+    return env
+
+def get_env_type(env_id):
+    # Re-parse the gym registry, since we could have new envs since last time.
+    for env in gym.envs.registry.all():
+        env_type = env._entry_point.split(':')[0].split('.')[-1]
+        _game_envs[env_type].add(env.id)  # This is a set so add is idempotent
+
+    if env_id in _game_envs.keys():
+        env_type = env_id
+        env_id = [g for g in _game_envs[env_type]][0]
+    else:
+        env_type = None
+        for g, e in _game_envs.items():
+            if env_id in e:
+                env_type = g
+                break
+        assert env_type is not None, 'env_id {} is not recognized in env types {}'.format(env_id, _game_envs.keys())
+
+    return env_type, env_id
+
+def learn(env, seed, total_timesteps, arglist):
     with U.single_threaded_session():
         # Create environment
         env = make_env(arglist.scenario, arglist, arglist.benchmark)
@@ -224,12 +322,41 @@ def safemean(xs):
     return np.nan if len(xs) == 0 else np.mean(xs)
 
 if __name__ == '__main__':
-    arglist = parse_args()
+    args = sys.argv
+    arg_parser = parse_args()
+    args, unknown_args = arg_parser.parse_known_args(args)
+    
+    # ------------------------------------------------------------------------------------------
+    # add custom training arguments for ppo2 algorithm
+    # TODO: update to MA specific activation functions
+    extra_args = Config.ddpg_train_args
+    extra_args = activation_str_function(extra_args)
+
+    # update extra_args with command line argument overrides
+    extra_args.update(parse_cmdline_kwargs(unknown_args))
 
     # create a separate result dir for each run
-    results_dir = create_results_dir(arglist)
+    results_dir = create_results_dir(args)
+
+    # save configurations
+    save_configs(results_dir, args, extra_args)
 
     # configure logger
-    logger.configure(dir=results_dir, format_strs=Config.baselines_log_format)
+    if MPI is None or MPI.COMM_WORLD.Get_rank() == 0:
+        rank = 0
+        logger.configure(dir=results_dir, format_strs=Config.baselines_log_format)
+    else:
+        logger.configure(dir=results_dir, format_strs=Config.baselines_log_format)
+        rank = MPI.COMM_WORLD.Get_rank()
+
+    # TODO: update the registers to use the correct environment
+    if args.play:
+        register_env(Config.ma_env_id, Config.ma_env_entry_point, Config.env_play_kwargs)
+    else:
+        register_env(Config.ma_env_id, Config.ma_env_entry_point, Config.env_train_kwargs)
+
+    model, env = train(args, extra_args)
+    env.close()
+    # ------------------------------------------------------------------------------------------
 
     train(arglist)

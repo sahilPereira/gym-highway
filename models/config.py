@@ -85,6 +85,10 @@ env_play_kwargs = {'manual': False, 'inf_obs': True, 'save': False, 'render': Tr
 results_dir = '~/gym_highway_results'
 save_path = '~/gym_highway_results/ppo2_test1'
 
+# gym multi-agent env register
+ma_env_id = 'MA-Highway-train-v0'
+ma_env_entry_point = 'gym_highway.multiagent_envs:MultiAgentEnv'
+
 # logging
 baselines_log_format = ['stdout','tensorboard']
 tensorboard_rootdir = 'gym_highway/tb/'
