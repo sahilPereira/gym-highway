@@ -16,22 +16,44 @@ from gym.envs.registration import register
 import maddpg.common.tf_util as U
 import models.config as Config
 from baselines import logger
+from baselines.common import set_global_seeds
 from baselines.common.cmd_util import (common_arg_parser, make_env,
                                        make_vec_env, parse_unknown_args)
+from baselines.common.policies import build_policy
 from baselines.common.tf_util import get_session
 from maddpg.trainer.maddpg import MADDPGAgentTrainer
 from models.utils import (activation_str_function, create_results_dir,
                           parse_cmdline_kwargs, save_configs)
-from baselines.common import set_global_seeds
+from baselines.common.models import get_network_builder
+
 try:
     from mpi4py import MPI
 except ImportError:
     MPI = None
 
-def get_trainers(env, num_adversaries, obs_shape_n, arglist):
+def mlp(num_layers=2, num_hidden=64, activation=tf.tanh, layer_norm=False):
+    def network_fn(X):
+        h = X
+        for i in range(num_layers):
+            h = layers.fully_connected(h, num_outputs=num_hidden, activation_fn=tf.nn.relu)
+        return h
+    return network_fn
+
+def create_model(**network_kwargs):
+    # create mlp model using custom args
+    mlp_network_fn = mlp(**network_kwargs)
+
+    # This model takes as input an observation and returns values of all actions
+    def mlp_model(input, num_outputs, scope, reuse=False, num_units=256, rnn_cell=None):
+        with tf.variable_scope(scope, reuse=reuse):
+            out = mlp_network_fn(input)
+            out = layers.fully_connected(out, num_outputs=num_outputs, activation_fn=None)
+            return out
+    return mlp_model
+
+def get_trainers(env, num_adversaries, obs_shape_n, arglist, **network_kwargs):
     trainers = []
-    # TODO: update this to work with standard model generator
-    model = mlp_model
+    model = create_model(**network_kwargs)
     trainer = MADDPGAgentTrainer
     for i in range(num_adversaries):
         trainers.append(trainer(
@@ -83,7 +105,7 @@ def learn(env,
     # replay buffer, actor and critic are defined for each agent in trainers
     obs_shape_n = [env.observation_space[i].shape for i in range(env.n)]
     num_adversaries = min(env.n, arglist.num_adversaries)
-    trainers = get_trainers(env, num_adversaries, obs_shape_n, arglist)
+    trainers = get_trainers(env, num_adversaries, obs_shape_n, arglist, **network_kwargs)
     print('Using good policy {} and adv policy {}'.format(arglist.good_policy, arglist.adv_policy))
 
     # 2. define parameter and action noise

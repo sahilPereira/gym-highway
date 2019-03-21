@@ -32,7 +32,7 @@ def activation_str_function(extra_args):
         extra_args['activation'] = tf.nn.sigmoid
     return extra_args
 
-def id_generator(size=10, chars=string.ascii_lowercase + string.digits):
+def id_generator(size=4, chars=string.ascii_lowercase + string.digits):
     return ''.join(random.choice(chars) for _ in range(size))
 
 def create_results_dir(args):
