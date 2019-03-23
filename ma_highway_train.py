@@ -160,7 +160,7 @@ def build_env(args):
     config.gpu_options.allow_growth = True
     get_session(config=config)
 
-    flatten_dict_observations = alg not in {'her'}
+    flatten_dict_observations = alg not in {'her', 'maddpg'}
     env = make_vec_env(env_id, env_type, nenv, seed, reward_scale=args.reward_scale, flatten_dict_observations=flatten_dict_observations)
 
     return env

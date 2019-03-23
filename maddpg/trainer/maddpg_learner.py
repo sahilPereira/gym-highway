@@ -118,134 +118,183 @@ def learn(env,
     # already done defining maddpg models in get_trainers
 
     # 5. output any useful logging information
+    # logger.info('scaling actions by {} before executing in env'.format(max_action))
 
-    # 6. get session and initialize all agent variables
-
-    # 7. reset agents and envs
-
-    # 8. initialize metric tracking parameters
-
-    # 9. nested training loop
-
-    # 10. logging metrics
-
-    # 11. saving model when required
     
+    # 6. get session and initialize all agent variables
+    # TODO: might just need to use get_session() if sess already created
     with U.single_threaded_session():
-        # Create environment
-        # env = make_env(arglist.scenario, arglist, arglist.benchmark)
-
         # Initialize
         U.initialize()
 
         # Load previous results, if necessary
+        # TODO: might need to update this based on how we save model
         if arglist.load_dir == "":
             arglist.load_dir = arglist.save_dir
         if arglist.display or arglist.restore or arglist.benchmark:
             print('Loading previous state...')
             U.load_state(arglist.load_dir)
 
-        episode_rewards = [0.0]  # sum of rewards for all agents
-        agent_rewards = [[0.0] for _ in range(env.n)]  # individual agent reward
-        final_ep_rewards = []  # sum of rewards for training curve
-        final_ep_ag_rewards = []  # agent rewards for training curve
-        agent_info = [[[]]]  # placeholder for benchmarking info
-        saver = tf.train.Saver()
         obs_n = env.reset()
-        episode_step = 0
-        # train_step = 0
-        t_start = time.time()
-        epinfobuf = deque(maxlen=100)
+        nenvs = obs_n.shape[0]
+        # ensure the shape of obs is consistent
+        assert obs_n.shape == (nenvs, env.n, obs_n.shape[-1])
 
+        # 8. initialize metric tracking parameters
+        episode_reward = np.zeros(nenvs, dtype = np.float32) #vector
+        episode_step = np.zeros(nenvs, dtype = int) # vector
+        episodes = 0 #scalar
+        t = 0 # scalar
+        epoch = 0
+
+        start_time = time.time()
+
+        epoch_episode_rewards = []
+        epoch_episode_steps = []
+        epoch_actions = []
+        epoch_qs = []
+        epoch_episodes = 0
+
+        # training metrics
+        loss_metrics = {'q_loss':deque(maxlen=len(trainers)), 
+                        'p_loss':deque(maxlen=len(trainers)), 
+                        'mean_target_q':deque(maxlen=len(trainers)), 
+                        'mean_rew':deque(maxlen=len(trainers)), 
+                        'mean_target_q_next':deque(maxlen=len(trainers)), 
+                        'std_target_q':deque(maxlen=len(trainers))
+                       }
+
+        saver = tf.train.Saver()
+        episode_rewards_history = deque(maxlen=100)
+
+        # 9. nested training loop
         print('Starting iterations...')
         total_timesteps = arglist.num_episodes*arglist.max_episode_len
-        for train_step in range(1, total_timesteps+1):
-            # get action
-            action_n = [agent.action(obs) for agent, obs in zip(trainers,obs_n)]
-            # environment step
-            new_obs_n, rew_n, done_n, info_n = env.step(action_n)
-            episode_step += 1
-            done = any(done_n)
-            terminal = (episode_step >= arglist.max_episode_len)
-            # collect experience
-            for i, agent in enumerate(trainers):
-                agent.experience(obs_n[i], action_n[i], rew_n[i], new_obs_n[i], done_n[i], terminal)
-            obs_n = new_obs_n
+        for epoch in range(nb_epochs):
+            for cycle in range(nb_epoch_cycles):
 
-            for i, rew in enumerate(rew_n):
-                episode_rewards[-1] += rew
-                agent_rewards[i][-1] += rew
+                # 7. reset agents and envs
+                # NOTE: since we dont have action and param noise, no agent.reset() required here
+                 
+                # Perform rollouts.
+                for t_rollout in range(nb_rollout_steps):
+                    # Predict next action.
+                    actions_n = []
+                    for i in range(nenvs):
+                        # get actions for all agents in current env
+                        actions_n.append([agent.action(obs) for agent, obs in zip(trainers,obs_n[i])])
+                        
+                    # confirm actions_n is nenvs x env.n x len(Action)
+                    assert actions_n.shape == (nenvs, env.n, env.action_space.n)
+                    
+                    # environment step
+                    new_obs_n, rew_n, done_n, info_n = env.step(actions_n)
 
-            if done or terminal:
-                obs_n = env.reset()
-                # save episode info
-                epinfobuf.append({"r": episode_rewards[-1], "l":episode_step, "t": round(time.time()-t_start, 6)})
-                # reset episode variables
-                episode_step = 0
-                episode_rewards.append(0)
-                for a in agent_rewards:
-                    a.append(0)
-                agent_info.append([[]])
+                    # sum of rewards for each env
+                    episode_reward += [sum(r) for r in rew_n]
+                    episode_step += 1
 
-            if train_step % arglist.log_interval == 0:
-                # logger.logkv(Config.tensorboard_rootdir+"serial_timesteps", train_step)
-                # logger.logkv(Config.tensorboard_rootdir+"num_update", update)
-                logger.logkv(Config.tensorboard_rootdir+"total_timesteps", train_step)
-                logger.logkv(Config.tensorboard_rootdir+"current_episode", int(train_step/arglist.max_episode_len))
-                # logger.logkv(Config.tensorboard_rootdir+"fps", fps)
-                # logger.logkv(Config.tensorboard_rootdir+"explained_variance", float(ev))
-                logger.logkv(Config.tensorboard_rootdir+'ep_reward_mean', safemean([epinfo['r'] for epinfo in epinfobuf]))
-                logger.logkv(Config.tensorboard_rootdir+'ep_length', safemean([epinfo['l'] for epinfo in epinfobuf]))
-                logger.logkv(Config.tensorboard_rootdir+'time_elapsed', round(time.time()-t_start, 6))
-                # for (lossval, lossname) in zip(lossvals, model.loss_names):
-                #     logger.logkv(Config.tensorboard_rootdir+lossname, lossval)
-                if MPI is None or MPI.COMM_WORLD.Get_rank() == 0:
-                    logger.dumpkvs()
-            
-            # increment global step counter
-            # train_step += 1
+                    # Book-keeping
+                    for i, agent in enumerate(trainers):
+                        for b in range(nenvs):
+                            # print(obs0[b])
+                            # print(action[b])
+                            # print(reward[b])
 
-            # for benchmarking learned policies
-            if arglist.benchmark:
-                for i, info in enumerate(info_n):
-                    agent_info[-1][i].append(info_n['n'])
-                if train_step > arglist.benchmark_iters and (done or terminal):
-                    file_name = arglist.benchmark_dir + arglist.exp_name + '.pkl'
-                    print('Finished benchmarking, now saving...')
-                    with open(file_name, 'wb') as fp:
-                        pickle.dump(agent_info[:-1], fp)
-                    break
-                continue
+                            # save experience from all envs for each agent
+                            agent.experience(obs_n[b][i], actions_n[b][i], rew_n[b][i], new_obs_n[b][i], done_n[b][i], None)
+                    obs_n = new_obs_n
 
-            # for displaying learned policies
-            if arglist.display:
-                time.sleep(0.1)
-                env.render()
-                continue
 
-            # update all trainers, if not in display or benchmark mode
-            loss = None
-            for agent in trainers:
-                agent.preupdate()
-            for agent in trainers:
-                loss = agent.update(trainers, train_step)
+                    for d in range(len(done_n)):
+                        if any(done[d]):
+                            # Episode done.
+                            epoch_episode_rewards.append(episode_reward[d])
+                            episode_rewards_history.append(episode_reward[d])
+                            epoch_episode_steps.append(episode_step[d])
+                            episode_reward[d] = 0.
+                            episode_step[d] = 0
+                            epoch_episodes += 1
+                            episodes += 1
+                            # if nenvs == 1:
+                            #     agent.reset()
+                    
+                    # update timestep
+                    t += 1
+                
+                # Train.
+                epoch_actor_losses = []
+                epoch_critic_losses = []
+                epoch_adaptive_distances = []
+                for t_train in range(nb_train_steps):
+                    # TODO: Adapt param noise, if necessary. (not included here)
 
-                # log loss info for each agent
-                if (train_step % arglist.log_interval == 0) and loss:
+                    cl, al = agent.train()
+                    epoch_critic_losses.append(cl)
+                    epoch_actor_losses.append(al)
+                    agent.update_target_net()
+
+                loss = None
+                for agent in trainers:
+                    agent.preupdate()
+                    loss = agent.update(trainers, train_step)
+
                     lossvals = [np.mean(data, axis=0) if isinstance(data, list) else data for data in loss]
                     for (lossval, lossname) in zip(lossvals, agent.loss_names):
-                        log_key = "{}{}/{}".format(Config.tensorboard_rootdir, lossname, agent.name)
-                        logger.logkv(log_key, lossval)
+                        loss_metrics[lossname].append(lossval)
+                
+                # TODO: implement evaluate logic (not included here)
 
-            # save model if at save_rate step or if its the first train_step
-            save_model = arglist.save_rate and ((train_step % arglist.save_rate == 0) or (train_step == total_timesteps))
-            # only save model if logger dir specified and current node rank is 0 (multithreading)
-            save_model &= logger.get_dir() and (MPI is None or MPI.COMM_WORLD.Get_rank() == 0)
-            if save_model:
+            # 10. logging metrics
+            duration = time.time() - start_time
+            combined_stats = {}
+            combined_stats[Config.tensorboard_rootdir+'rollout/return'] = np.mean(epoch_episode_rewards)
+            combined_stats[Config.tensorboard_rootdir+'rollout/return_history'] = np.mean(episode_rewards_history)
+            combined_stats[Config.tensorboard_rootdir+'rollout/episode_steps'] = np.mean(epoch_episode_steps)
+            combined_stats[Config.tensorboard_rootdir+'train/loss_actor'] = np.mean(loss_metrics['p_loss'])
+            combined_stats[Config.tensorboard_rootdir+'train/loss_critic'] = np.mean(loss_metrics['q_loss'])
+            combined_stats[Config.tensorboard_rootdir+'train/mean_target_q'] = np.mean(loss_metrics['mean_target_q'])
+            combined_stats[Config.tensorboard_rootdir+'train/mean_rew'] = np.mean(loss_metrics['mean_rew'])
+            combined_stats[Config.tensorboard_rootdir+'train/mean_target_q_next'] = np.mean(loss_metrics['mean_target_q_next'])
+            combined_stats[Config.tensorboard_rootdir+'train/std_target_q'] = np.mean(loss_metrics['std_target_q'])
+            combined_stats[Config.tensorboard_rootdir+'total/duration'] = duration
+            combined_stats[Config.tensorboard_rootdir+'total/steps_per_second'] = float(t) / float(duration)
+            combined_stats[Config.tensorboard_rootdir+'total/episodes'] = episodes
+            combined_stats[Config.tensorboard_rootdir+'rollout/episodes'] = epoch_episodes
+            
+            # Evaluation statistics.
+            # if eval_env is not None:
+            #     combined_stats[Config.tensorboard_rootdir+'eval/return'] = eval_episode_rewards
+            #     combined_stats[Config.tensorboard_rootdir+'eval/return_history'] = np.mean(eval_episode_rewards_history)
+            #     combined_stats[Config.tensorboard_rootdir+'eval/Q'] = eval_qs
+            #     combined_stats[Config.tensorboard_rootdir+'eval/episodes'] = len(eval_episode_rewards)
+
+
+            combined_stats_sums = np.array([ np.array(x).flatten()[0] for x in combined_stats.values()])
+            if MPI is not None:
+                combined_stats_sums = MPI.COMM_WORLD.allreduce(combined_stats_sums)
+
+            mpi_size = MPI.COMM_WORLD.Get_size() if MPI is not None else 1
+            combined_stats = {k : v / mpi_size for (k,v) in zip(combined_stats.keys(), combined_stats_sums)}
+
+            # Total statistics.
+            combined_stats[Config.tensorboard_rootdir+'total/epochs'] = epoch + 1
+            combined_stats[Config.tensorboard_rootdir+'total/steps'] = t
+
+            for key in sorted(combined_stats.keys()):
+                logger.record_tabular(key, combined_stats[key])
+
+            if rank == 0:
+                logger.dump_tabular()
+            logger.info('')
+
+            # 11. saving model when required
+            if save_interval and (epoch % save_interval == 0 or epoch == 1) and logger.get_dir() and (MPI is None or MPI.COMM_WORLD.Get_rank() == 0):
                 checkdir = osp.join(logger.get_dir(), 'checkpoints')
                 os.makedirs(checkdir, exist_ok=True)
-                savepath = osp.join(checkdir, '%.5i'%train_step)
+                savepath = osp.join(checkdir, '%.5i'%epoch)
                 print('Saving to', savepath)
+                agent.save(savepath)
                 U.save_state(savepath, saver=saver)
-                # model.save(savepath)
+            
         env.close()
