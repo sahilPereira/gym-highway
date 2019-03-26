@@ -8,7 +8,8 @@ import numpy as np
 
 from gym_highway.multiagent_envs import actions
 from gym_highway.multiagent_envs.highway_core import HighwaySimulator
-import gym_highway.multiagent_envs.highway_constants as Constants
+# import gym_highway.multiagent_envs.highway_constants as Constants
+from gym_highway.multiagent_envs import highway_constants as Constants
 
 import logging
 logger = logging.getLogger(__name__)

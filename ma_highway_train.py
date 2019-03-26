@@ -5,7 +5,7 @@ import os.path as osp
 import pickle
 import sys
 import time
-from collections import deque
+from collections import defaultdict, deque
 
 import gym
 import numpy as np
@@ -58,7 +58,7 @@ def parse_args():
     # parser.add_argument("--batch-size", type=int, default=1024, help="number of episodes to optimize at the same time")
     # parser.add_argument("--num-units", type=int, default=256, help="number of units in the mlp")
     # parser.add_argument("--rb-size", type=int, default=25e4, help="replay buffer size")
-    # parser.add_argument('--reward_scale', help='Reward scale factor. Default: 1.0', default=1.0, type=float)
+    parser.add_argument('--reward_scale', help='Reward scale factor. Default: 1.0', default=1.0, type=float)
     # Checkpointing
     # parser.add_argument("--exp-name", type=str, default=None, help="name of the experiment")
     # parser.add_argument("--save-dir", type=str, default="/tmp/policy/", help="directory in which training state and model should be saved")
@@ -158,7 +158,7 @@ def build_env(args):
     get_session(config=config)
 
     flatten_dict_observations = alg not in {'her', 'maddpg'}
-    env = make_vec_env(env_id, env_type, nenv, seed, reward_scale=args.reward_scale, flatten_dict_observations=flatten_dict_observations)
+    env = make_vec_env(env_id, env_type, nenv, seed, reward_scale=args.reward_scale, flatten_dict_observations=flatten_dict_observations, isMultiAgent=True)
 
     return env
 
@@ -182,8 +182,6 @@ def get_env_type(env_id):
     return env_type, env_id
 
 def learn_old(env, 
-          seed, 
-          total_timesteps, 
           arglist,
           seed=None,
           total_timesteps=None,

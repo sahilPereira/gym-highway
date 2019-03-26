@@ -22,7 +22,7 @@ class MultiAgentEnv(gym.Env):
         self.world = scenario.make_world(num_agents, world_config)
         self.agents = self.world.agents
         # set required vectorized gym env property
-        self.n = len(world.agents)
+        self.n = len(self.world.agents)
         # scenario callbacks
         self.reset_callback = scenario.reset_world
         self.reward_callback = scenario.rewards
@@ -49,7 +49,7 @@ class MultiAgentEnv(gym.Env):
         # configure spaces
         self.action_space = [None]*self.n
         self.observation_space = [None]*self.n
-        obs_dim = len(observation_callback(self.world)[0])
+        obs_dim = len(self.observation_callback(self.world)[0])
         for agent in self.agents:
             # action space
             self.action_space[agent.id] = spaces.Discrete(len(actions.Action))

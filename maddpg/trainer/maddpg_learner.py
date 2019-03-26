@@ -198,7 +198,7 @@ def learn(env,
                         actions_n.append([agent.action(obs) for agent, obs in zip(trainers,obs_n[i])])
                         
                     # confirm actions_n is nenvs x env.n x len(Action)
-                    assert actions_n.shape == (nenvs, env.n, env.action_space.n)
+                    assert actions_n.shape == (nenvs, env.n, env.action_space[0].n)
                     
                     # environment step
                     new_obs_n, rew_n, done_n, info_n = env.step(actions_n)
