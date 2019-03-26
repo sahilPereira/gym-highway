@@ -110,11 +110,23 @@ def q_train(make_obs_ph_n, act_space_n, q_index, q_func, optimizer, grad_norm_cl
         return train, update_target_q, {'q_values': q_values, 'target_q_values': target_q_values}
 
 class MADDPGAgentTrainer(AgentTrainer):
-    def __init__(self, name, model, obs_shape_n, act_space_n, agent_index, args, local_q_func=False):
+    def __init__(self, name, model, obs_shape_n, act_space_n, agent_index, actor_lr=None, critic_lr=None, gamma=None, 
+        num_units=None, rb_size=None, batch_size=None, max_episode_len=None, clip_norm=0.5, local_q_func=False):
         self.name = name
         self.n = len(obs_shape_n)
         self.agent_index = agent_index
         self.args = args
+
+        # training parameters
+        self.actor_lr = actor_lr if actor_lr else args.lr
+        self.critic_lr = critic_lr if critic_lr else args.lr
+        self.gamma = gamma if gamma else args.gamma
+        self.num_units = num_units if num_units else args.num_units
+        self.rb_size = rb_size if rb_size else args.rb_size
+        self.batch_size = batch_size if batch_size else args.batch_size
+        self.max_episode_len = max_episode_len if max_episode_len else args.max_episode_len
+        self.clip_norm = clip_norm
+
         obs_ph_n = []
         for i in range(self.n):
             obs_ph_n.append(U.BatchInput(obs_shape_n[i], name="observation"+str(i)).get())
@@ -126,10 +138,10 @@ class MADDPGAgentTrainer(AgentTrainer):
             act_space_n=act_space_n,
             q_index=agent_index,
             q_func=model,
-            optimizer=tf.train.AdamOptimizer(learning_rate=args.lr),
-            grad_norm_clipping=0.5,
+            optimizer=tf.train.AdamOptimizer(learning_rate=critic_lr),
+            grad_norm_clipping=clip_norm,
             local_q_func=local_q_func,
-            num_units=args.num_units
+            num_units=num_units
         )
         self.act, self.p_train, self.p_update, self.p_debug = p_train(
             scope=self.name,
@@ -138,14 +150,14 @@ class MADDPGAgentTrainer(AgentTrainer):
             p_index=agent_index,
             p_func=model,
             q_func=model,
-            optimizer=tf.train.AdamOptimizer(learning_rate=args.lr),
-            grad_norm_clipping=0.5,
+            optimizer=tf.train.AdamOptimizer(learning_rate=actor_lr),
+            grad_norm_clipping=clip_norm,
             local_q_func=local_q_func,
-            num_units=args.num_units
+            num_units=num_units
         )
         # Create experience buffer
-        self.replay_buffer = ReplayBuffer(args.rb_size)
-        self.max_replay_buffer_len = args.batch_size * args.max_episode_len
+        self.replay_buffer = ReplayBuffer(rb_size)
+        self.max_replay_buffer_len = batch_size * max_episode_len
         self.replay_sample_index = None
         self.loss_names = ['q_loss', 'p_loss', 'mean_target_q', 'mean_rew', 'mean_target_q_next', 'std_target_q']
 
@@ -165,7 +177,7 @@ class MADDPGAgentTrainer(AgentTrainer):
         if not t % 100 == 0:  # only update every 100 steps
             return
 
-        self.replay_sample_index = self.replay_buffer.make_index(self.args.batch_size)
+        self.replay_sample_index = self.replay_buffer.make_index(self.batch_size)
         # collect replay sample from all agents
         obs_n = []
         obs_next_n = []
@@ -184,7 +196,7 @@ class MADDPGAgentTrainer(AgentTrainer):
         for i in range(num_sample):
             target_act_next_n = [agents[i].p_debug['target_act'](obs_next_n[i]) for i in range(self.n)]
             target_q_next = self.q_debug['target_q_values'](*(obs_next_n + target_act_next_n))
-            target_q += rew + self.args.gamma * (1.0 - done) * target_q_next
+            target_q += rew + self.gamma * (1.0 - done) * target_q_next
         target_q /= num_sample
         q_loss = self.q_train(*(obs_n + act_n + [target_q]))
 

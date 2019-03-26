@@ -35,7 +35,7 @@ def mlp(num_layers=2, num_hidden=64, activation=tf.tanh, layer_norm=False):
     def network_fn(X):
         h = X
         for i in range(num_layers):
-            h = layers.fully_connected(h, num_outputs=num_hidden, activation_fn=tf.nn.relu)
+            h = layers.fully_connected(h, num_outputs=num_hidden, activation_fn=activation)
         return h
     return network_fn
 
@@ -51,23 +51,22 @@ def create_model(**network_kwargs):
             return out
     return mlp_model
 
-def get_trainers(env, num_adversaries, obs_shape_n, arglist, **network_kwargs):
+def get_trainers(env, num_adversaries, obs_shape_n, adv_policy, good_policy, training_params, **network_kwargs):
     trainers = []
     model = create_model(**network_kwargs)
     trainer = MADDPGAgentTrainer
     for i in range(num_adversaries):
         trainers.append(trainer(
-            "agent_%d" % i, model, obs_shape_n, env.action_space, i, arglist,
-            local_q_func=(arglist.adv_policy=='ddpg')))
+            "agent_%d" % i, model, obs_shape_n, env.action_space, i, **training_params,
+            local_q_func=(adv_policy=='ddpg')))
     for i in range(num_adversaries, env.n):
         trainers.append(trainer(
-            "agent_%d" % i, model, obs_shape_n, env.action_space, i, arglist,
-            local_q_func=(arglist.good_policy=='ddpg')))
+            "agent_%d" % i, model, obs_shape_n, env.action_space, i, **training_params,
+            local_q_func=(good_policy=='ddpg')))
     return trainers
 
 def learn(env, 
-          total_timesteps, 
-          arglist,
+          total_timesteps,
           seed=None,
           nb_epochs=None, # with default settings, perform 1M steps total
           nb_epoch_cycles=20,
@@ -90,11 +89,22 @@ def learn(env,
           tau=0.01,
           eval_env=None,
           param_noise_adaption_interval=50,
+          adv_policy='maddpg',
+          good_policy='maddpg',
+          load_path=None,
           save_interval=100,
           num_adversaries=0,
+          rb_size=1e6,
           **network_kwargs):
     
     set_global_seeds(seed)
+
+    # update training parameters
+    if total_timesteps is not None:
+        assert nb_epochs is None
+        nb_epochs = int(total_timesteps) // (nb_epoch_cycles * nb_rollout_steps)
+    else:
+        nb_epochs = 500
 
     if MPI is not None:
         rank = MPI.COMM_WORLD.Get_rank()
@@ -104,9 +114,15 @@ def learn(env,
     # 1. Create agent trainers
     # replay buffer, actor and critic are defined for each agent in trainers
     obs_shape_n = [env.observation_space[i].shape for i in range(env.n)]
-    num_adversaries = min(env.n, arglist.num_adversaries)
-    trainers = get_trainers(env, num_adversaries, obs_shape_n, arglist, **network_kwargs)
-    print('Using good policy {} and adv policy {}'.format(arglist.good_policy, arglist.adv_policy))
+    num_adversaries = min(env.n, num_adversaries)
+    training_params = {'actor_lr':actor_lr, 'critic_lr':critic_lr, 'gamma':gamma, 
+                       'num_units':network_kwargs['num_hidden'], 'rb_size':rb_size, 
+                       'batch_size':batch_size, 'max_episode_len':nb_rollout_steps, 
+                       'clip_norm':clip_norm}
+
+    trainers = get_trainers(env, num_adversaries, obs_shape_n, adv_policy, good_policy, training_params, **network_kwargs)
+    print("Num of observations: {}".format(len(obs_shape_n)))
+    print('Observation shapes {}'.format(obs_shape_n))
 
     # 2. define parameter and action noise
     # not done in maddpg, but done in ddpg
@@ -129,11 +145,9 @@ def learn(env,
 
         # Load previous results, if necessary
         # TODO: might need to update this based on how we save model
-        if arglist.load_dir == "":
-            arglist.load_dir = arglist.save_dir
-        if arglist.display or arglist.restore or arglist.benchmark:
+        if load_path is not None:
             print('Loading previous state...')
-            U.load_state(arglist.load_dir)
+            U.load_state(load_path)
 
         obs_n = env.reset()
         nenvs = obs_n.shape[0]
@@ -169,7 +183,6 @@ def learn(env,
 
         # 9. nested training loop
         print('Starting iterations...')
-        total_timesteps = arglist.num_episodes*arglist.max_episode_len
         for epoch in range(nb_epochs):
             for cycle in range(nb_epoch_cycles):
 
@@ -226,22 +239,20 @@ def learn(env,
                 epoch_actor_losses = []
                 epoch_critic_losses = []
                 epoch_adaptive_distances = []
+
                 for t_train in range(nb_train_steps):
-                    # TODO: Adapt param noise, if necessary. (not included here)
+                    for agent in trainers:
+                        agent.preupdate()
+                        loss = agent.update(trainers, t)
+                        # continue if there is no loss computed
+                        if not loss:
+                            continue
 
-                    cl, al = agent.train()
-                    epoch_critic_losses.append(cl)
-                    epoch_actor_losses.append(al)
-                    agent.update_target_net()
-
-                loss = None
-                for agent in trainers:
-                    agent.preupdate()
-                    loss = agent.update(trainers, train_step)
-
-                    lossvals = [np.mean(data, axis=0) if isinstance(data, list) else data for data in loss]
-                    for (lossval, lossname) in zip(lossvals, agent.loss_names):
-                        loss_metrics[lossname].append(lossval)
+                        # get all the loss metrics for this agent
+                        lossvals = [np.mean(data, axis=0) if isinstance(data, list) else data for data in loss]
+                        # add the metrics to respective queue
+                        for (lossval, lossname) in zip(lossvals, agent.loss_names):
+                            loss_metrics[lossname].append(lossval)
                 
                 # TODO: implement evaluate logic (not included here)
 
@@ -294,7 +305,8 @@ def learn(env,
                 os.makedirs(checkdir, exist_ok=True)
                 savepath = osp.join(checkdir, '%.5i'%epoch)
                 print('Saving to', savepath)
-                agent.save(savepath)
+                # TODO: test which method works
+                # agent.save(savepath)
                 U.save_state(savepath, saver=saver)
             
-        env.close()
+    return trainers

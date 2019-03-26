@@ -218,7 +218,7 @@ def custom_arg_parser():
     parser.add_argument('--env', help='environment ID', type=str, default=Config.env_id)
     parser.add_argument('--seed', help='RNG seed', type=int, default=None)
     parser.add_argument('--alg', help='Algorithm', type=str, default='ppo2')
-    parser.add_argument('--num_timesteps', type=float, default=1e6),
+    parser.add_argument('--num_timesteps', type=float, default=1e6)
     parser.add_argument('--network', help='network type (mlp, cnn, lstm, cnn_lstm, conv_only)', default=None)
     parser.add_argument('--gamestate', help='game state to load (so far only used in retro games)', default=None)
     parser.add_argument('--num_env', help='Number of environment copies being run in parallel', default=Config.num_workers, type=int)

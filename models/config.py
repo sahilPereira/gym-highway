@@ -64,6 +64,37 @@ ddpg_train_args = {'nb_epochs':None, # with default settings, perform 1M steps t
 				   'layer_norm':False
 				   }
 
+maddpg_train_args = {'nb_epochs':None, # with default settings, perform 1M steps total
+				   'nb_epoch_cycles':6, # one cycle for each env
+				   'nb_rollout_steps':240, # 240 (240*6 = 1440)
+				   'reward_scale':1.0,
+				   'noise_type':'adaptive-param_0.2',
+				   'normalize_returns':False,
+				   'normalize_observations':True,
+				   'critic_l2_reg':1e-2,
+				   'actor_lr':1e-4,
+				   'critic_lr':1e-3,
+				   'popart':False,
+				   'gamma':0.99,
+				   'clip_norm':None,
+				   'nb_train_steps':6, # per epoch cycle and MPI worker, (train 6 times using a batch size of 240)
+				   'nb_eval_steps':100,
+				   'batch_size':240, # per MPI worker
+				   'tau':0.01,
+				   'param_noise_adaption_interval':50,
+				   'adv_policy':'maddpg',
+				   'good_policy':'maddpg',
+				   'load_path':None,
+				   'save_interval':100,
+				   'num_adversaries':0,
+				   'rb_size':1e6,
+				   # policy network_kwargs
+				   'num_layers':3, 
+				   'num_hidden':256, 
+				   'activation':'relu',
+				   'layer_norm':False
+				   }
+
 # Whether to place workers on GPUs (only for A3C)
 use_gpu_for_workers = False
 

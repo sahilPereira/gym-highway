@@ -20,11 +20,9 @@ from baselines.common.cmd_util import (common_arg_parser, make_env,
                                        make_vec_env, parse_unknown_args)
 from baselines.common.tf_util import get_session
 from maddpg.trainer.maddpg import MADDPGAgentTrainer
+from maddpg.trainer.maddpg_learner import learn
 from models.utils import (activation_str_function, create_results_dir,
                           parse_cmdline_kwargs, save_configs)
-
-# import gym_highway
-# from gym_highway.envs import HighwayEnv
 
 try:
     from mpi4py import MPI
@@ -42,37 +40,40 @@ def arg_parser():
 def parse_args():
     parser = arg_parser()
     # Environment
-    parser.add_argument('--env', help='environment ID', type=str, default=Config.env_id)
+    parser.add_argument('--env', help='environment ID', type=str, default=Config.ma_env_id)
     parser.add_argument('--seed', help='RNG seed', type=int, default=None)
     parser.add_argument('--alg', help='Algorithm', type=str, default='maddpg')
-    parser.add_argument("--scenario", type=str, default="simple", help="name of the scenario script")
-    parser.add_argument("--max-episode-len", type=int, default=240, help="maximum episode length")
-    parser.add_argument("--num-episodes", type=int, default=60000, help="number of episodes")
+    parser.add_argument('--num_timesteps', type=float, default=1e6)
+    parser.add_argument('--num_env', help='Number of environment copies being run in parallel', default=Config.num_workers, type=int)
+    # parser.add_argument("--scenario", type=str, default="simple", help="name of the scenario script")
+    # parser.add_argument("--max-episode-len", type=int, default=240, help="maximum episode length")
+    # parser.add_argument("--num-episodes", type=int, default=60000, help="number of episodes")
     parser.add_argument("--num-agents", type=int, default=1, help="number of total agents")
-    parser.add_argument("--num-adversaries", type=int, default=0, help="number of adversaries")
-    parser.add_argument("--good-policy", type=str, default="maddpg", help="policy for good agents")
-    parser.add_argument("--adv-policy", type=str, default="maddpg", help="policy of adversaries")
+    # parser.add_argument("--num-adversaries", type=int, default=0, help="number of adversaries")
+    # parser.add_argument("--good-policy", type=str, default="maddpg", help="policy for good agents")
+    # parser.add_argument("--adv-policy", type=str, default="maddpg", help="policy of adversaries")
     # Core training parameters
-    parser.add_argument("--lr", type=float, default=1e-2, help="learning rate for Adam optimizer")
-    parser.add_argument("--gamma", type=float, default=0.95, help="discount factor")
-    parser.add_argument("--batch-size", type=int, default=1024, help="number of episodes to optimize at the same time")
-    parser.add_argument("--num-units", type=int, default=256, help="number of units in the mlp")
-    parser.add_argument("--rb-size", type=int, default=25e4, help="replay buffer size")
+    # parser.add_argument("--lr", type=float, default=1e-2, help="learning rate for Adam optimizer")
+    # parser.add_argument("--gamma", type=float, default=0.95, help="discount factor")
+    # parser.add_argument("--batch-size", type=int, default=1024, help="number of episodes to optimize at the same time")
+    # parser.add_argument("--num-units", type=int, default=256, help="number of units in the mlp")
+    # parser.add_argument("--rb-size", type=int, default=25e4, help="replay buffer size")
+    # parser.add_argument('--reward_scale', help='Reward scale factor. Default: 1.0', default=1.0, type=float)
     # Checkpointing
-    parser.add_argument("--exp-name", type=str, default=None, help="name of the experiment")
-    parser.add_argument("--save-dir", type=str, default="/tmp/policy/", help="directory in which training state and model should be saved")
-    parser.add_argument("--save-rate", type=int, default=10000, help="save model once every time this many episodes are completed")
-    parser.add_argument("--load-dir", type=str, default="", help="directory in which training state and model are loaded")
-    parser.add_argument('--save_path', help='Location to save trained model', default=None, type=str)
-    parser.add_argument('--save_model', default=True, action='store_false')
-    parser.add_argument("--log_interval", type=int, default=240, help="timesteps between logging")
+    # parser.add_argument("--exp-name", type=str, default=None, help="name of the experiment")
+    # parser.add_argument("--save-dir", type=str, default="/tmp/policy/", help="directory in which training state and model should be saved")
+    # parser.add_argument("--save-rate", type=int, default=10000, help="save model once every time this many episodes are completed")
+    # parser.add_argument("--load-dir", type=str, default="", help="directory in which training state and model are loaded")
+    # parser.add_argument('--save_path', help='Location to save trained model', default=None, type=str)
+    # parser.add_argument('--save_model', default=True, action='store_false')
+    # parser.add_argument("--log_interval", type=int, default=240, help="timesteps between logging")
     # Evaluation
-    parser.add_argument("--restore", action="store_true", default=False)
-    parser.add_argument("--display", action="store_true", default=False)
-    parser.add_argument("--benchmark", action="store_true", default=False)
-    parser.add_argument("--benchmark-iters", type=int, default=1000, help="number of iterations run for benchmarking")
-    parser.add_argument("--benchmark-dir", type=str, default="./benchmark_files/", help="directory where benchmark data is saved")
-    parser.add_argument("--plots-dir", type=str, default="./learning_curves/", help="directory where plot data is saved")
+    # parser.add_argument("--restore", action="store_true", default=False)
+    # parser.add_argument("--display", action="store_true", default=False)
+    # parser.add_argument("--benchmark", action="store_true", default=False)
+    # parser.add_argument("--benchmark-iters", type=int, default=1000, help="number of iterations run for benchmarking")
+    # parser.add_argument("--benchmark-dir", type=str, default="./benchmark_files/", help="directory where benchmark data is saved")
+    # parser.add_argument("--plots-dir", type=str, default="./learning_curves/", help="directory where plot data is saved")
     parser.add_argument('--play', default=False, action='store_true')
     return parser
 
@@ -117,13 +118,9 @@ def train(args, extra_args):
     alg_kwargs = {}
     # learn = get_learn_function(args.alg)
     # alg_kwargs = get_learn_function_defaults(args.alg, env_type)
-    # alg_kwargs.update(extra_args)
+    alg_kwargs.update(extra_args)
 
     env = build_env(args)
-
-    # TODO: removed since we dont save any video intervals
-    # if args.save_video_interval != 0:
-    #     env = VecVideoRecorder(env, osp.join(logger.Logger.CURRENT.dir, "videos"), record_video_trigger=lambda x: x % args.save_video_interval == 0, video_length=args.save_video_length)
 
     # if args.network:
     #     alg_kwargs['network'] = args.network
@@ -137,7 +134,7 @@ def train(args, extra_args):
         env=env,
         seed=seed,
         total_timesteps=total_timesteps,
-        args
+        **alg_kwargs
     )
     return model, env
 
@@ -184,7 +181,7 @@ def get_env_type(env_id):
 
     return env_type, env_id
 
-def learn(env, 
+def learn_old(env, 
           seed, 
           total_timesteps, 
           arglist,
@@ -354,7 +351,7 @@ if __name__ == '__main__':
     
     # add custom training arguments for ppo2 algorithm
     # TODO: update to MA specific activation functions
-    extra_args = Config.ddpg_train_args
+    extra_args = Config.maddpg_train_args
     extra_args = activation_str_function(extra_args)
 
     # update extra_args with command line argument overrides
