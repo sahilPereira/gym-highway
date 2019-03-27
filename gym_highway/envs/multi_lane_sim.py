@@ -3,8 +3,8 @@ import pygame
 from math import tan, radians, degrees, copysign, ceil
 from pygame.math import Vector2
 # import stackelbergPlayer as SCP
-# from stackelbergPlayer import StackelbergPlayer, Action
-from gym_highway.envs.stackelbergPlayer import StackelbergPlayer, Action
+from stackelbergPlayer import StackelbergPlayer, Action
+# from gym_highway.envs.stackelbergPlayer import StackelbergPlayer, Action
 from random import randrange
 import random
 import math
@@ -288,7 +288,7 @@ class HighwaySimulator:
             pygame.display.set_caption("Car tutorial")
             self.screen = pygame.display.set_mode((width, height))
         self.clock = pygame.time.Clock()
-        self.ticks = 60
+        self.ticks = 120
         self.exit = False
 
         # simulation options
@@ -512,8 +512,10 @@ class HighwaySimulator:
 
                 # while not self.exit:
                 while run_time <= RUN_DURATION and not self.exit:
-                    dt = self.clock.get_time() / 1000
+                    # dt = self.clock.get_time() / 100
+                    dt = 1.0/120.0
                     # dt = 50.0/1000.0
+                    is_paused = True
                     
                     # pause game when needed
                     for e in pygame.event.get():
@@ -525,7 +527,8 @@ class HighwaySimulator:
 
                     if is_paused:
                         pygame.display.flip()
-                        self.clock.tick(self.ticks)
+                        # self.clock.tick(self.ticks)
+                        self.clock.tick()
                         continue
 
                     action_timer += dt
@@ -634,8 +637,8 @@ class HighwaySimulator:
 
                     collision_count_lock = False
 
-                    self.clock.tick(self.ticks)
-                    # self.clock.tick()
+                    # self.clock.tick(self.ticks)
+                    self.clock.tick()
 
                 if not self.exit:
                     # log the number of agents and the current run count
