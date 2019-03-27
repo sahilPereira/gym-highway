@@ -51,7 +51,7 @@ def create_model(**network_kwargs):
             return out
     return mlp_model
 
-def get_trainers(env, num_adversaries, obs_shape_n, adv_policy, good_policy, training_params, **network_kwargs):
+def get_trainers(env, num_agents, num_adversaries, obs_shape_n, adv_policy, good_policy, training_params, **network_kwargs):
     trainers = []
     model = create_model(**network_kwargs)
     trainer = MADDPGAgentTrainer
@@ -59,14 +59,15 @@ def get_trainers(env, num_adversaries, obs_shape_n, adv_policy, good_policy, tra
         trainers.append(trainer(
             "agent_%d" % i, model, obs_shape_n, env.action_space, i, **training_params,
             local_q_func=(adv_policy=='ddpg')))
-    for i in range(num_adversaries, env.n):
+    for i in range(num_adversaries, num_agents):
         trainers.append(trainer(
             "agent_%d" % i, model, obs_shape_n, env.action_space, i, **training_params,
             local_q_func=(good_policy=='ddpg')))
     return trainers
 
-def learn(env, 
+def learn(env,
           total_timesteps,
+          num_agents=1,
           seed=None,
           nb_epochs=None, # with default settings, perform 1M steps total
           nb_epoch_cycles=20,
@@ -113,14 +114,14 @@ def learn(env,
     
     # 1. Create agent trainers
     # replay buffer, actor and critic are defined for each agent in trainers
-    obs_shape_n = [env.observation_space[i].shape for i in range(env.n)]
-    num_adversaries = min(env.n, num_adversaries)
+    obs_shape_n = [env.observation_space[i].shape for i in range(num_agents)]
+    num_adversaries = min(num_agents, num_adversaries)
     training_params = {'actor_lr':actor_lr, 'critic_lr':critic_lr, 'gamma':gamma, 
                        'num_units':network_kwargs['num_hidden'], 'rb_size':rb_size, 
                        'batch_size':batch_size, 'max_episode_len':nb_rollout_steps, 
                        'clip_norm':clip_norm}
 
-    trainers = get_trainers(env, num_adversaries, obs_shape_n, adv_policy, good_policy, training_params, **network_kwargs)
+    trainers = get_trainers(env, num_agents, num_adversaries, obs_shape_n, adv_policy, good_policy, training_params, **network_kwargs)
     print("Num of observations: {}".format(len(obs_shape_n)))
     print('Observation shapes {}'.format(obs_shape_n))
 
@@ -152,7 +153,7 @@ def learn(env,
         obs_n = env.reset()
         nenvs = obs_n.shape[0]
         # ensure the shape of obs is consistent
-        assert obs_n.shape == (nenvs, env.n, obs_n.shape[-1])
+        assert obs_n.shape == (nenvs, num_agents, obs_n.shape[-1])
 
         # 8. initialize metric tracking parameters
         episode_reward = np.zeros(nenvs, dtype = np.float32) #vector
@@ -197,8 +198,8 @@ def learn(env,
                         # get actions for all agents in current env
                         actions_n.append([agent.action(obs) for agent, obs in zip(trainers,obs_n[i])])
                         
-                    # confirm actions_n is nenvs x env.n x len(Action)
-                    assert actions_n.shape == (nenvs, env.n, env.action_space[0].n)
+                    # confirm actions_n is nenvs x num_agents x len(Action)
+                    assert actions_n.shape == (nenvs, num_agents, env.action_space[0].n)
                     
                     # environment step
                     new_obs_n, rew_n, done_n, info_n = env.step(actions_n)

@@ -132,8 +132,9 @@ def train(args, extra_args):
 
     model = learn(
         env=env,
-        seed=seed,
         total_timesteps=total_timesteps,
+        num_agents=args.num_agents,
+        seed=seed,
         **alg_kwargs
     )
     return model, env

@@ -22,13 +22,14 @@ class DummyVecMAEnv(VecEnv):
 
         # env.observation_space is a list of n observations corresponding to n agents
         obs_space = env.observation_space
+        n_agents = len(obs_space)
 
         # a normal obs return (None, shape, dtype)
         # list of observations contains obs for each agent from their perspective
         self.keys = []
         shapes = {}
         dtypes = {}
-        for i in range(env.n):
+        for i in range(n_agents):
             key, shape, dtype = obs_space_info(obs_space[i])
             self.keys.append(key)
             shapes.update(shape)
@@ -36,13 +37,13 @@ class DummyVecMAEnv(VecEnv):
         
         # buf_obs shape was originally (nenv, os_space), but now it is (nenv, n_agents, ob_space)
         # NOTE: the shape might be different if we have different observations per agent
-        self.buf_obs = { k: np.zeros((self.num_envs,) + tuple(env.n, shapes[k]), dtype=dtypes[k]) for k in self.keys }
+        self.buf_obs = { k: np.zeros((self.num_envs,) + tuple(n_agents, shapes[k]), dtype=dtypes[k]) for k in self.keys }
 
         # these all should handle multiple agents
-        self.buf_dones = np.zeros((self.num_envs,env.n,), dtype=np.bool)
-        self.buf_rews  = np.zeros((self.num_envs,env.n,), dtype=np.float32)
+        self.buf_dones = np.zeros((self.num_envs,n_agents,), dtype=np.bool)
+        self.buf_rews  = np.zeros((self.num_envs,n_agents,), dtype=np.float32)
 
-        self.buf_infos = [[{} for _ in range(env.n)] for _ in range(self.num_envs)]
+        self.buf_infos = [[{} for _ in range(n_agents)] for _ in range(self.num_envs)]
         self.actions = None
         self.specs = [e.spec for e in self.envs]
 
