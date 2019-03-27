@@ -57,11 +57,11 @@ def get_trainers(env, num_agents, num_adversaries, obs_shape_n, adv_policy, good
     trainer = MADDPGAgentTrainer
     for i in range(num_adversaries):
         trainers.append(trainer(
-            "agent_%d" % i, model, obs_shape_n, env.action_space, i, **training_params,
+            "agent_%d" % i, model, obs_shape_n, env.action_space, i, {}, **training_params,
             local_q_func=(adv_policy=='ddpg')))
     for i in range(num_adversaries, num_agents):
         trainers.append(trainer(
-            "agent_%d" % i, model, obs_shape_n, env.action_space, i, **training_params,
+            "agent_%d" % i, model, obs_shape_n, env.action_space, i, {}, **training_params,
             local_q_func=(good_policy=='ddpg')))
     return trainers
 
@@ -199,7 +199,7 @@ def learn(env,
                         actions_n.append([agent.action(obs) for agent, obs in zip(trainers,obs_n[i])])
                         
                     # confirm actions_n is nenvs x num_agents x len(Action)
-                    assert actions_n.shape == (nenvs, num_agents, env.action_space[0].n)
+                    assert np.array(actions_n).shape == (nenvs, num_agents, env.action_space[0].n)
                     
                     # environment step
                     new_obs_n, rew_n, done_n, info_n = env.step(actions_n)
@@ -221,7 +221,7 @@ def learn(env,
 
 
                     for d in range(len(done_n)):
-                        if any(done[d]):
+                        if any(done_n[d]):
                             # Episode done.
                             epoch_episode_rewards.append(episode_reward[d])
                             episode_rewards_history.append(episode_reward[d])

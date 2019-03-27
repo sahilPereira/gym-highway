@@ -110,7 +110,7 @@ def q_train(make_obs_ph_n, act_space_n, q_index, q_func, optimizer, grad_norm_cl
         return train, update_target_q, {'q_values': q_values, 'target_q_values': target_q_values}
 
 class MADDPGAgentTrainer(AgentTrainer):
-    def __init__(self, name, model, obs_shape_n, act_space_n, agent_index, actor_lr=None, critic_lr=None, gamma=None, 
+    def __init__(self, name, model, obs_shape_n, act_space_n, agent_index, args, actor_lr=None, critic_lr=None, gamma=None, 
         num_units=None, rb_size=None, batch_size=None, max_episode_len=None, clip_norm=0.5, local_q_func=False):
         self.name = name
         self.n = len(obs_shape_n)
@@ -138,10 +138,10 @@ class MADDPGAgentTrainer(AgentTrainer):
             act_space_n=act_space_n,
             q_index=agent_index,
             q_func=model,
-            optimizer=tf.train.AdamOptimizer(learning_rate=critic_lr),
-            grad_norm_clipping=clip_norm,
+            optimizer=tf.train.AdamOptimizer(learning_rate=self.critic_lr),
+            grad_norm_clipping=self.clip_norm,
             local_q_func=local_q_func,
-            num_units=num_units
+            num_units=self.num_units
         )
         self.act, self.p_train, self.p_update, self.p_debug = p_train(
             scope=self.name,
@@ -150,14 +150,14 @@ class MADDPGAgentTrainer(AgentTrainer):
             p_index=agent_index,
             p_func=model,
             q_func=model,
-            optimizer=tf.train.AdamOptimizer(learning_rate=actor_lr),
-            grad_norm_clipping=clip_norm,
+            optimizer=tf.train.AdamOptimizer(learning_rate=self.actor_lr),
+            grad_norm_clipping=self.clip_norm,
             local_q_func=local_q_func,
-            num_units=num_units
+            num_units=self.num_units
         )
         # Create experience buffer
-        self.replay_buffer = ReplayBuffer(rb_size)
-        self.max_replay_buffer_len = batch_size * max_episode_len
+        self.replay_buffer = ReplayBuffer(self.rb_size)
+        self.max_replay_buffer_len = self.batch_size * self.max_episode_len
         self.replay_sample_index = None
         self.loss_names = ['q_loss', 'p_loss', 'mean_target_q', 'mean_rew', 'mean_target_q_next', 'std_target_q']
 

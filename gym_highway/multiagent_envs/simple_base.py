@@ -28,9 +28,13 @@ class Scenario(BaseScenario):
 
     def configure_world(self, world, n_agents, n_obstacles):
         # initial positions of obstacles and agents
+        # initialize in x formation
         policy_agents_data = [
-            {'id':0, 'x':20, 'y':Constants.LANE_2_C, 'vel_x':0.0, 'vel_y':0.0, 'lane_id':2},
-            {'id':1, 'x':5, 'y':Constants.LANE_1_C, 'vel_x':10.0, 'vel_y':0.0, 'lane_id':1}
+            {'id':0, 'x':10, 'y':Constants.LANE_1_C, 'vel_x':0.0, 'vel_y':0.0, 'lane_id':1},
+            {'id':1, 'x':10, 'y':Constants.LANE_3_C, 'vel_x':0.0, 'vel_y':0.0, 'lane_id':3},
+            {'id':2, 'x':7.5, 'y':Constants.LANE_2_C, 'vel_x':0.0, 'vel_y':0.0, 'lane_id':2},
+            {'id':3, 'x':5, 'y':Constants.LANE_1_C, 'vel_x':0.0, 'vel_y':0.0, 'lane_id':1},
+            {'id':4, 'x':5, 'y':Constants.LANE_3_C, 'vel_x':0.0, 'vel_y':0.0, 'lane_id':3}
         ]
         scripted_agents_data = [
             {'id':n_agents, 'x':-20, 'y':Constants.LANE_1_C, 'vel_x':13.0, 'lane_id':1, 'color':Constants.YELLOW}, 

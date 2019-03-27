@@ -31,13 +31,15 @@ class DummyVecMAEnv(VecEnv):
         dtypes = {}
         for i in range(n_agents):
             key, shape, dtype = obs_space_info(obs_space[i])
-            self.keys.append(key)
+            self.keys.extend(key)
             shapes.update(shape)
             dtypes.update(dtype)
+        # remove repeating keys
+        self.keys = set(self.keys)
         
         # buf_obs shape was originally (nenv, os_space), but now it is (nenv, n_agents, ob_space)
         # NOTE: the shape might be different if we have different observations per agent
-        self.buf_obs = { k: np.zeros((self.num_envs,) + tuple(n_agents, shapes[k]), dtype=dtypes[k]) for k in self.keys }
+        self.buf_obs = { k: np.zeros((self.num_envs, n_agents, ) + tuple(shapes[k]), dtype=dtypes[k]) for k in self.keys }
 
         # these all should handle multiple agents
         self.buf_dones = np.zeros((self.num_envs,n_agents,), dtype=np.bool)
