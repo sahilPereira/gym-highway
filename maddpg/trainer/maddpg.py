@@ -127,6 +127,17 @@ class MADDPGAgentTrainer(AgentTrainer):
         self.max_episode_len = max_episode_len if max_episode_len else args.max_episode_len
         self.clip_norm = clip_norm
 
+        # TODO: remove after testing
+        import models.config as Config
+        assert actor_lr == Config.maddpg_train_args.actor_lr
+        assert critic_lr == Config.maddpg_train_args.critic_lr
+        assert gamma == Config.maddpg_train_args.gamma
+        assert num_units == Config.maddpg_train_args.num_hidden
+        assert rb_size == Config.maddpg_train_args.rb_size
+        assert batch_size == Config.maddpg_train_args.batch_size
+        assert max_episode_len == Config.maddpg_train_args.max_episode_len
+        assert clip_norm == Config.maddpg_train_args.clip_norm
+        
         obs_ph_n = []
         for i in range(self.n):
             obs_ph_n.append(U.BatchInput(obs_shape_n[i], name="observation"+str(i)).get())

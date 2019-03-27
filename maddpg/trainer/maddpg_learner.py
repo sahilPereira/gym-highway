@@ -32,6 +32,11 @@ except ImportError:
     MPI = None
 
 def mlp(num_layers=2, num_hidden=64, activation=tf.tanh, layer_norm=False):
+    # TODO: remove after testing
+    assert num_layers == 3
+    assert num_hidden == 256
+    assert activation == tf.nn.relu
+
     def network_fn(X):
         h = X
         for i in range(num_layers):
@@ -301,7 +306,7 @@ def learn(env,
             logger.info('')
 
             # 11. saving model when required
-            if save_interval and (epoch % save_interval == 0 or epoch == 1) and logger.get_dir() and (MPI is None or MPI.COMM_WORLD.Get_rank() == 0):
+            if save_interval and (epoch % save_interval == 0) and logger.get_dir() and (MPI is None or MPI.COMM_WORLD.Get_rank() == 0):
                 checkdir = osp.join(logger.get_dir(), 'checkpoints')
                 os.makedirs(checkdir, exist_ok=True)
                 savepath = osp.join(checkdir, '%.5i'%epoch)
