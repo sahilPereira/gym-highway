@@ -828,7 +828,8 @@ class HighwaySimulator:
                     rand_vel_x = float(randrange(5, 15))
                     rand_lane_id = obstacle.lane_id
 
-                    new_obstacle = Obstacle(id=randrange(100,1000), x=rand_pos_x, y=rand_pos_y, vel_x=rand_vel_x, vel_y=0.0, lane_id=rand_lane_id, color=Constants.YELLOW)
+                    # new_obstacle = Obstacle(id=randrange(100,1000), x=rand_pos_x, y=rand_pos_y, vel_x=rand_vel_x, vel_y=0.0, lane_id=rand_lane_id, color=Constants.YELLOW)
+                    new_obstacle = Obstacle(id=obstacle.id, x=rand_pos_x, y=rand_pos_y, vel_x=rand_vel_x, vel_y=0.0, lane_id=rand_lane_id, color=Constants.YELLOW)
                     self.all_coming_cars.add(new_obstacle)
                     self.all_obstacles.add(new_obstacle)
 
@@ -881,12 +882,15 @@ class HighwaySimulator:
         """
         ref_car = self.reference_car
 
-        ob_list = []
-        ob_list.append([ref_car.position.x, ref_car.position.y, ref_car.velocity.x, ref_car.angular_velocity])
+        # ob_list = []
+        # ob_list.append([ref_car.position.x, ref_car.position.y, ref_car.velocity.x, ref_car.angular_velocity])
+        ob_list = [None]*len(self.all_obstacles)
+        ob_list[0] = [ref_car.position.x, ref_car.position.y, ref_car.velocity.x, ref_car.angular_velocity]
         # for idx, obj in enumerate(self.all_obstacles):
         for obj in self.all_obstacles:
             if obj != ref_car:
-                ob_list.append([obj.position.x, obj.position.y, obj.velocity.x, obj.velocity.y])
+                # ob_list.append([obj.position.x, obj.position.y, obj.velocity.x, obj.velocity.y])
+                ob_list[obj.id] = [obj.position.x, obj.position.y, obj.velocity.x, obj.velocity.y]
 
         observations = numpy.array(ob_list, dtype=numpy.float32).flatten()
         return observations

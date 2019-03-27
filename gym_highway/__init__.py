@@ -8,3 +8,10 @@ register(
     entry_point='gym_highway.envs:HighwayEnv'
     # kwargs={'manual': False, 'inf_obs': True, 'save': False, 'render': True}
 )
+
+# Multiagent envs
+# ----------------------------------------
+register(
+    id='HighwayMultiagent-v0',
+    entry_point='gym_highway.multiagent_envs:MultiAgentEnv'
+)

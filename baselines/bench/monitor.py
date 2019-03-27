@@ -57,9 +57,12 @@ class Monitor(Wrapper):
 
     def update(self, ob, rew, done, info):
         self.rewards.append(rew)
-        if done:
+        # in multi-agent scenario, run finishes when any agent is done
+        is_done = any(done) if isinstance(done, list) else done
+        if is_done:
             self.needs_reset = True
-            eprew = sum(self.rewards)
+            # flatten to handle multiple agent rewards
+            eprew = sum(np.array(self.rewards).flatten())
             eplen = len(self.rewards)
             epinfo = {"r": round(eprew, 6), "l": eplen, "t": round(time.time() - self.tstart, 6)}
             for k in self.info_keywords:

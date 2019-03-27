@@ -16,6 +16,8 @@ from baselines.common import set_global_seeds
 from baselines.common.atari_wrappers import make_atari, wrap_deepmind
 from baselines.common.vec_env.subproc_vec_env import SubprocVecEnv
 from baselines.common.vec_env.dummy_vec_env import DummyVecEnv
+from baselines.common.vec_env.subproc_vec_ma_env import SubprocVecMAEnv
+from baselines.common.vec_env.dummy_vec_ma_env import DummyVecMAEnv
 from baselines.common import retro_wrappers
 
 def make_vec_env(env_id, env_type, num_env, seed,
@@ -23,7 +25,7 @@ def make_vec_env(env_id, env_type, num_env, seed,
                  start_index=0,
                  reward_scale=1.0,
                  flatten_dict_observations=True,
-                 gamestate=None):
+                 gamestate=None, isMultiAgent=False):
     """
     Create a wrapped, monitored SubprocVecEnv for Atari and MuJoCo.
     """
@@ -44,8 +46,12 @@ def make_vec_env(env_id, env_type, num_env, seed,
 
     set_global_seeds(seed)
     if num_env > 1:
+        if isMultiAgent:
+            return SubprocVecMAEnv([make_thunk(i + start_index) for i in range(num_env)])
         return SubprocVecEnv([make_thunk(i + start_index) for i in range(num_env)])
     else:
+        if isMultiAgent:
+            return DummyVecMAEnv([make_thunk(start_index)])
         return DummyVecEnv([make_thunk(start_index)])
 
 

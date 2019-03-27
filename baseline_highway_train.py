@@ -43,11 +43,11 @@ def train(args, extra_args):
     total_timesteps = int(args.num_timesteps)
     seed = args.seed
 
-    if extra_args["use_icm"]:
-        # if using ICM use ppo2_icm submodule in ppo2
-        learn = get_alg_module(args.alg, Config.icm_submodule).learn
-    else:
-        learn = get_learn_function(args.alg)
+    # if extra_args["use_icm"]:
+    #     # if using ICM use ppo2_icm submodule in ppo2
+    #     learn = get_alg_module(args.alg, Config.icm_submodule).learn
+    # else:
+    learn = get_learn_function(args.alg)
     
     alg_kwargs = get_learn_function_defaults(args.alg, env_type)
     alg_kwargs.update(extra_args)
@@ -218,12 +218,12 @@ def custom_arg_parser():
     parser.add_argument('--env', help='environment ID', type=str, default=Config.env_id)
     parser.add_argument('--seed', help='RNG seed', type=int, default=None)
     parser.add_argument('--alg', help='Algorithm', type=str, default='ppo2')
-    parser.add_argument('--num_timesteps', type=float, default=1e6),
+    parser.add_argument('--num_timesteps', type=float, default=1e6)
     parser.add_argument('--network', help='network type (mlp, cnn, lstm, cnn_lstm, conv_only)', default=None)
     parser.add_argument('--gamestate', help='game state to load (so far only used in retro games)', default=None)
     parser.add_argument('--num_env', help='Number of environment copies being run in parallel', default=Config.num_workers, type=int)
     parser.add_argument('--reward_scale', help='Reward scale factor. Default: 1.0', default=1.0, type=float)
-    parser.add_argument('--save_path', help='Path to save trained model to', default=None, type=str)
+    parser.add_argument('--save_path', help='Location to save trained model', default=None, type=str)
     parser.add_argument('--save_model', default=True, action='store_false')
     parser.add_argument('--save_video_interval', help='Save video every x steps (0 = disabled)', default=0, type=int)
     parser.add_argument('--save_video_length', help='Length of recorded video. Default: 200', default=200, type=int)
@@ -237,7 +237,8 @@ def main(args):
     args, unknown_args = arg_parser.parse_known_args(args)
     
     # add custom training arguments for ppo2 algorithm
-    extra_args = Config.ppo2_train_args
+    # extra_args = Config.ppo2_train_args
+    extra_args = Config.ddpg_train_args
     extra_args = activation_str_function(extra_args)
 
     # update extra_args with command line argument overrides
