@@ -129,14 +129,14 @@ class MADDPGAgentTrainer(AgentTrainer):
 
         # TODO: remove after testing
         import models.config as Config
-        assert actor_lr == Config.maddpg_train_args.actor_lr
-        assert critic_lr == Config.maddpg_train_args.critic_lr
-        assert gamma == Config.maddpg_train_args.gamma
-        assert num_units == Config.maddpg_train_args.num_hidden
-        assert rb_size == Config.maddpg_train_args.rb_size
-        assert batch_size == Config.maddpg_train_args.batch_size
-        assert max_episode_len == Config.maddpg_train_args.max_episode_len
-        assert clip_norm == Config.maddpg_train_args.clip_norm
+        assert actor_lr == Config.maddpg_train_args['actor_lr']
+        assert critic_lr == Config.maddpg_train_args['critic_lr']
+        assert gamma == Config.maddpg_train_args['gamma']
+        assert num_units == Config.maddpg_train_args['num_hidden']
+        assert rb_size == Config.maddpg_train_args['rb_size']
+        assert batch_size == Config.maddpg_train_args['batch_size']
+        assert max_episode_len == Config.maddpg_train_args['nb_rollout_steps']
+        assert clip_norm == Config.maddpg_train_args['clip_norm']
         
         obs_ph_n = []
         for i in range(self.n):
