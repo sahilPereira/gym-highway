@@ -22,11 +22,11 @@ ACTION_LOOKUP = {
 class HighwayEnv(gym.Env, utils.EzPickle):
     metadata = {'render.modes': ['human']}
 
-    def __init__(self, manual=False, inf_obs=True, save=False, render=True):
+    def __init__(self, manual=False, inf_obs=True, save=False, render=True, real_time=False):
         self.__version__ = "0.0.1"
         logging.info("HighwayEnv - Version {}".format(self.__version__))
 
-        self.env = self._configure_environment(manual, inf_obs, save, render)
+        self.env = self._configure_environment(manual, inf_obs, save, render, real_time)
 
         self.action_space = spaces.Discrete(len(Action))
 
@@ -38,7 +38,7 @@ class HighwayEnv(gym.Env, utils.EzPickle):
 
         # self.action_episode_memory = []
 
-    def _configure_environment(self, manual, inf_obs, save, render):
+    def _configure_environment(self, manual, inf_obs, save, render, real_time):
         # initial positions of obstacles and agents
         obstacle_1 = {'id':1, 'x':-20, 'y':Constants.LANE_1_C, 'vel_x':13.0, 'lane_id':1, 'color':Constants.YELLOW}
         obstacle_2 = {'id':2, 'x':-25, 'y':Constants.LANE_2_C, 'vel_x':12.0, 'lane_id':2, 'color':Constants.YELLOW}
@@ -52,7 +52,7 @@ class HighwayEnv(gym.Env, utils.EzPickle):
         # car_5 = {'id':4, 'x':5, 'y':LANE_3_C, 'vel_x':10.0, 'vel_y':0.0, 'lane_id':3}
         cars_list = [car_1]
 
-        highwaySim = HighwaySimulator(cars_list, obstacle_list, manual, inf_obs, save, render)
+        highwaySim = HighwaySimulator(cars_list, obstacle_list, manual, inf_obs, save, render, real_time)
         return highwaySim
 
     def step(self, action):
@@ -86,7 +86,8 @@ class HighwayEnv(gym.Env, utils.EzPickle):
 
         reward = 0.0
 
-        num_steps = 15 #int(60*0.25)
+        # allow for actions at 4Hz
+        num_steps = int(self.env.ticks/4)
         for _ in range(num_steps):
             reward = self._take_action(action)
 

@@ -1,18 +1,21 @@
-import os
-import pygame
-from math import tan, radians, degrees, copysign, ceil
-from pygame.math import Vector2
-# import stackelbergPlayer as SCP
-from stackelbergPlayer import StackelbergPlayer, Action
-# from gym_highway.envs.stackelbergPlayer import StackelbergPlayer, Action
-from random import randrange
-import random
 import math
-import numpy
-import pandas as pd
+import os
 import pickle
+import random
 from argparse import ArgumentParser
 from enum import Enum
+from math import ceil, copysign, degrees, radians, tan
+from random import randrange
+
+import numpy
+import pandas as pd
+import pygame
+from pygame.math import Vector2
+
+# import stackelbergPlayer as SCP
+# from gym_highway.envs.stackelbergPlayer import StackelbergPlayer, Action
+from stackelbergPlayer import Action, StackelbergPlayer
+
 
 class Constants():
     WHITE = (255, 255, 255)
@@ -280,7 +283,7 @@ class Obstacle(pygame.sprite.Sprite):
         self.rect.y = self.position.y * Constants.ppu - self.rect.height / 2
 
 class HighwaySimulator:
-    def __init__(self, cars_list, obstacle_list, is_manual=False, inf_obstacles=False, is_data_saved=False, render=False):
+    def __init__(self, cars_list, obstacle_list, is_manual=False, inf_obstacles=False, is_data_saved=False, render=False, is_real_time=False):
         pygame.init()
         width = Constants.WIDTH
         height = Constants.HEIGHT
@@ -288,7 +291,8 @@ class HighwaySimulator:
             pygame.display.set_caption("Car tutorial")
             self.screen = pygame.display.set_mode((width, height))
         self.clock = pygame.time.Clock()
-        self.ticks = 120
+        self.ticks = 60.0 if is_real_time else 36.0
+        self.framerate = self.ticks if is_real_time else 0.0
         self.exit = False
 
         # simulation options
@@ -513,9 +517,8 @@ class HighwaySimulator:
                 # while not self.exit:
                 while run_time <= RUN_DURATION and not self.exit:
                     # dt = self.clock.get_time() / 100
-                    dt = 1.0/120.0
                     # dt = 50.0/1000.0
-                    is_paused = True
+                    dt = 1.0/self.ticks
                     
                     # pause game when needed
                     for e in pygame.event.get():
@@ -527,8 +530,7 @@ class HighwaySimulator:
 
                     if is_paused:
                         pygame.display.flip()
-                        # self.clock.tick(self.ticks)
-                        self.clock.tick()
+                        self.clock.tick(self.framerate)
                         continue
 
                     action_timer += dt
@@ -637,8 +639,7 @@ class HighwaySimulator:
 
                     collision_count_lock = False
 
-                    # self.clock.tick(self.ticks)
-                    self.clock.tick()
+                    self.clock.tick(self.framerate)
 
                 if not self.exit:
                     # log the number of agents and the current run count
@@ -741,7 +742,8 @@ class HighwaySimulator:
         """
 
         # dt = 50.0/1000.0 (For faster simulation)
-        dt = self.clock.get_time() / 1000
+        # dt = self.clock.get_time() / 1000
+        dt = 1.0/self.ticks
 
         # reset reward so that it corresponds to current action
         self.reward = 0.0
@@ -758,7 +760,7 @@ class HighwaySimulator:
         if self.is_paused:
             if self.render:
                 pygame.display.flip()
-            self.clock.tick(self.ticks)
+            self.clock.tick(self.framerate)
             return 0.0
 
         self.action_timer += dt
@@ -868,8 +870,7 @@ class HighwaySimulator:
 
         self.collision_count_lock = False
 
-        self.clock.tick(self.ticks)
-        # self.clock.tick()
+        self.clock.tick(self.framerate)
 
         return self.reward
 
@@ -1048,6 +1049,7 @@ if __name__ == '__main__':
     parser = ArgumentParser()
     parser.add_argument("--manual", dest="manual", action='store_true', help="use manual driving mode; default is using Stackelberg driving model")
     parser.add_argument("--inf_obs", dest="inf_obs", action='store_true', help="produce new obstacle on a lane when current obstacle is out of window")
+    parser.add_argument("--real_time", dest="real_time", action='store_true', help="save performance metrics")
     parser.add_argument("--save", dest="save_data", action='store_true', help="save performance metrics")
 
     args = parser.parse_args()
@@ -1066,6 +1068,6 @@ if __name__ == '__main__':
     # cars_list = [car_1, car_2, car_3, car_4, car_5]
     cars_list = [car_1]
 
-    game = HighwaySimulator(cars_list, obstacle_list, args.manual, args.inf_obs, args.save_data, True)
+    game = HighwaySimulator(cars_list, obstacle_list, args.manual, args.inf_obs, args.save_data, True, args.real_time)
     # run the simulation
     game.run(cars_list, obstacle_list, args.manual, args.inf_obs, args.save_data)

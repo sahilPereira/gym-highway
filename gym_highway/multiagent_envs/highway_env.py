@@ -61,7 +61,7 @@ class MultiAgentEnv(gym.Env):
         Update state of the world
         """
         reward = 0.0
-        num_steps = 15 #int(60*0.25)
+        num_steps = int(self.world.ticks/4)
 
         # set actions for scripted agents 
         # TODO: might be useful when we want the scripted agents to have a more robust script

@@ -13,7 +13,7 @@ from gym_highway.multiagent_envs import highway_constants as Constants
 from gym_highway.multiagent_envs.agent import Car, Obstacle
 
 class HighwaySimulator:
-    def __init__(self, manual=False, inf_obs=False, save=False, render=False):
+    def __init__(self, manual=False, inf_obs=False, save=False, render=False, real_time=False):
         pygame.init()
         width = Constants.WIDTH
         height = Constants.HEIGHT
@@ -21,7 +21,8 @@ class HighwaySimulator:
             pygame.display.set_caption("Car tutorial")
             self.screen = pygame.display.set_mode((width, height))
         self.clock = pygame.time.Clock()
-        self.ticks = 60
+        self.ticks = 60.0 if real_time else 36.0
+        self.framerate = self.ticks if real_time else 0.0
         self.exit = False
 
         # simulation options
@@ -229,7 +230,8 @@ class HighwaySimulator:
         """
 
         # dt = 50.0/1000.0 (For faster simulation)
-        dt = self.clock.get_time() / 1000
+        # dt = self.clock.get_time() / 1000
+        dt = 1.0/self.ticks
 
         # reset reward so that it corresponds to current action
         self.reward = [0.0]*len(self.policy_agents_data)
@@ -243,7 +245,7 @@ class HighwaySimulator:
         if self.is_paused:
             if self.render:
                 pygame.display.flip()
-            self.clock.tick(self.ticks)
+            self.clock.tick(self.framerate)
             return 0.0
 
         self.action_timer += dt
@@ -324,8 +326,7 @@ class HighwaySimulator:
 
         self.collision_count_lock = False
 
-        self.clock.tick(self.ticks)
-        # self.clock.tick()
+        self.clock.tick(self.framerate)
 
     def check_collisions(self):
         # collision check (done before update() to check if previous action led to collisions)
