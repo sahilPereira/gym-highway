@@ -130,34 +130,28 @@ class Car(pygame.sprite.Sprite):
         self.position += self.velocity.rotate(-self.angle) * dt
         # self.angle += degrees(angular_velocity) * dt
 
-    def update(self, dt, s_leader):
-        
-        if self.do_accelerate:
-            self.accelerate(dt)
-        elif self.do_decelerate:
-            self.decelerate(dt)
-        elif self.do_maintain:
-            self.maintain(dt)
-
+    def update_c(self, dt, s_leader):
+        '''
+        Update function for continuous actions
+        '''
+        # dont drive backwards
         self.velocity += (self.acceleration * dt, 0)
         self.velocity.x = max(0.0, min(self.velocity.x, self.max_velocity))
 
-        # trigger movement
-        new_lane_pos = (Constants.LANE_WIDTH * self.lane_id - (Constants.LANE_WIDTH/2))/Constants.ppu
-        # print(new_lane_pos)
-        if self.left_mode:
-            self.moveLeft(dt, new_lane_pos)
-        elif self.right_mode:
-            self.moveRight(dt, new_lane_pos)
-
         if self.steering:
             turning_radius = self.length / tan(radians(self.steering))
-            self.angular_velocity = self.velocity.x / turning_radius
+            angular_velocity = self.velocity.x / turning_radius
         else:
-            self.angular_velocity = 0
+            angular_velocity = 0
 
         self.position += self.velocity.rotate(-self.angle) * dt
-        self.position.y -= degrees(self.angular_velocity) * dt * dt
+        self.position.y -= angular_velocity * dt
+        # self.angle += degrees(angular_velocity) * dt
+        # if self.angle >= 0:
+        #     self.angle = min(self.angle, 45.0)
+        # else:
+        #     self.angle = max(self.angle, -45.0)
+
 
         if self.id == s_leader.id:
             self.position.x = 10
@@ -165,14 +159,60 @@ class Car(pygame.sprite.Sprite):
             self.position.x -= s_leader.velocity.x * dt
 
         # prevent the car from leaving the road
-        if self.position.y < int((Constants.CAR_HEIGHT/2)/Constants.ppu):
-            self.position.y = max(self.position.y, int((Constants.CAR_HEIGHT/2)/Constants.ppu))
-        elif self.position.y > int((Constants.HEIGHT - int(Constants.CAR_HEIGHT/2))/Constants.ppu):
-            self.position.y = min(self.position.y, int((Constants.HEIGHT - int((Constants.CAR_HEIGHT/2)/Constants.ppu))/Constants.ppu))
+        if self.position.y < int((Constants.LANE_WIDTH/2)/Constants.ppu):
+            self.position.y = max(self.position.y, int((Constants.LANE_WIDTH/2)/Constants.ppu))
+        elif self.position.y > int((Constants.HEIGHT - int(Constants.LANE_WIDTH/2))/Constants.ppu):
+            self.position.y = min(self.position.y, int((Constants.HEIGHT - int((Constants.LANE_WIDTH/2)/Constants.ppu))/Constants.ppu))
 
         # update rect for collision detection
         self.rect.x = self.position.x * Constants.ppu - self.rect.width / 2
         self.rect.y = self.position.y * Constants.ppu - self.rect.height / 2
+
+    def update(self, dt, s_leader):
+
+        self.update_c(dt, s_leader)
+        
+        # if self.do_accelerate:
+        #     self.accelerate(dt)
+        # elif self.do_decelerate:
+        #     self.decelerate(dt)
+        # elif self.do_maintain:
+        #     self.maintain(dt)
+
+        # self.velocity += (self.acceleration * dt, 0)
+        # self.velocity.x = max(0.0, min(self.velocity.x, self.max_velocity))
+
+        # # trigger movement
+        # new_lane_pos = (Constants.LANE_WIDTH * self.lane_id - (Constants.LANE_WIDTH/2))/Constants.ppu
+        # # print(new_lane_pos)
+        # if self.left_mode:
+        #     self.moveLeft(dt, new_lane_pos)
+        # elif self.right_mode:
+        #     self.moveRight(dt, new_lane_pos)
+
+        # if self.steering:
+        #     turning_radius = self.length / tan(radians(self.steering))
+        #     self.angular_velocity = self.velocity.x / turning_radius
+        # else:
+        #     self.angular_velocity = 0
+
+        # self.position += self.velocity.rotate(-self.angle) * dt
+        # self.position.y -= degrees(self.angular_velocity) * dt * dt
+
+        # if self.id == s_leader.id:
+        #     self.position.x = 10
+        # else:
+        #     self.position.x -= s_leader.velocity.x * dt
+
+        # # prevent the car from leaving the road
+        # if self.position.y < int((Constants.CAR_HEIGHT/2)/Constants.ppu):
+        #     self.position.y = max(self.position.y, int((Constants.CAR_HEIGHT/2)/Constants.ppu))
+        # elif self.position.y > int((Constants.HEIGHT - int(Constants.CAR_HEIGHT/2))/Constants.ppu):
+        #     self.position.y = min(self.position.y, int((Constants.HEIGHT - int((Constants.CAR_HEIGHT/2)/Constants.ppu))/Constants.ppu))
+
+        # # update rect for collision detection
+        # self.rect.x = self.position.x * Constants.ppu - self.rect.width / 2
+        # self.rect.y = self.position.y * Constants.ppu - self.rect.height / 2
 
     def setCruiseVel(self, cruise_vel):
         self.cruise_vel = cruise_vel
@@ -292,7 +332,7 @@ class HighwaySimulator:
             self.screen = pygame.display.set_mode((width, height))
         self.clock = pygame.time.Clock()
         self.ticks = 60.0 if is_real_time else 36.0
-        self.framerate = self.ticks if is_real_time else 0.0
+        self.framerate = 120.0 if is_real_time else 0.0
         self.exit = False
 
         # simulation options
@@ -344,24 +384,58 @@ class HighwaySimulator:
             rect = rotated.get_rect()
             self.screen.blit(rotated, auto.position * Constants.ppu - (rect.width / 2, rect.height / 2))
 
-    def manualControl(self, car, all_obstacles):
+    def manualControl(self, car, all_obstacles, dt):
+        # User input
+        # pressed = pygame.key.get_pressed()
+
+        # if pressed[pygame.K_UP] and not car.do_accelerate:
+        #     self.accelerate(car)
+        # elif pressed[pygame.K_DOWN] and not car.do_maintain:
+        #     self.maintain(car, all_obstacles)
+        # elif pressed[pygame.K_SPACE] and not car.do_decelerate:
+        #     self.decelerate(car)
+
+        # car.acceleration = max(-car.max_acceleration, min(car.acceleration, car.max_acceleration))
+
+        # if pressed[pygame.K_RIGHT] and not car.right_mode:
+        #     self.turn_right(car)
+        # elif pressed[pygame.K_LEFT] and not car.left_mode:
+        #     self.turn_left(car)
+
+        # car.steering = max(-car.max_steering, min(car.steering, car.max_steering))
+
         # User input
         pressed = pygame.key.get_pressed()
 
-        if pressed[pygame.K_UP] and not car.do_accelerate:
-            self.accelerate(car)
-        elif pressed[pygame.K_DOWN] and not car.do_maintain:
-            self.maintain(car, all_obstacles)
-        elif pressed[pygame.K_SPACE] and not car.do_decelerate:
-            self.decelerate(car)
-
+        if pressed[pygame.K_UP]:
+            if car.velocity.x < 0:
+                car.acceleration = car.brake_deceleration
+            else:
+                car.acceleration += 1 * dt
+        elif pressed[pygame.K_DOWN]:
+            if car.velocity.x > 0:
+                car.acceleration = -car.brake_deceleration
+            else:
+                car.acceleration -= 1 * dt
+        elif pressed[pygame.K_SPACE]:
+            if abs(car.velocity.x) > dt * car.brake_deceleration:
+                car.acceleration = -copysign(car.brake_deceleration, car.velocity.x)
+            else:
+                car.acceleration = -car.velocity.x / dt
+        else:
+            if abs(car.velocity.x) > dt * car.free_deceleration:
+                car.acceleration = -copysign(car.free_deceleration, car.velocity.x)
+            else:
+                if dt != 0:
+                    car.acceleration = -car.velocity.x / dt
         car.acceleration = max(-car.max_acceleration, min(car.acceleration, car.max_acceleration))
 
-        if pressed[pygame.K_RIGHT] and not car.right_mode:
-            self.turn_right(car)
-        elif pressed[pygame.K_LEFT] and not car.left_mode:
-            self.turn_left(car)
-
+        if pressed[pygame.K_RIGHT]:
+            car.steering -= 30 * dt
+        elif pressed[pygame.K_LEFT]:
+            car.steering += 30 * dt
+        else:
+            car.steering = 0
         car.steering = max(-car.max_steering, min(car.steering, car.max_steering))
 
     def stackelbergControl(self, controller, reference_car, all_agents, all_obstacles):
@@ -544,7 +618,7 @@ class HighwaySimulator:
                             self.exit = True
 
                     if is_manual:
-                        self.manualControl(reference_car, all_obstacles)
+                        self.manualControl(reference_car, all_obstacles, dt)
                     else:
                         if action_timer >= Constants.ACTION_RESET_TIME:
                             selected_action = self.stackelbergControl(s_controller, reference_car, all_agents, all_obstacles)

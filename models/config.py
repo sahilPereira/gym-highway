@@ -89,7 +89,7 @@ maddpg_train_args = {'nb_epochs':None, # with default settings, perform 1M steps
 				   'num_adversaries':0,
 				   'rb_size':1e6,
 				   # policy network_kwargs
-				   'num_layers':3, 
+				   'num_layers':5, 
 				   'num_hidden':256, 
 				   'activation':'relu',
 				   'layer_norm':False

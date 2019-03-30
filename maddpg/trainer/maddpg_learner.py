@@ -33,8 +33,8 @@ except ImportError:
 
 def mlp(num_layers=2, num_hidden=64, activation=tf.tanh, layer_norm=False):
     # TODO: remove after testing
-    assert num_layers == 3
-    assert num_hidden == 256
+    assert num_layers == Config.maddpg_train_args['num_layers']
+    assert num_hidden == Config.maddpg_train_args['num_hidden']
     assert activation == tf.nn.relu
 
     def network_fn(X):

@@ -68,6 +68,9 @@ class Car(pygame.sprite.Sprite):
         return sim_car
 
     def update_c(self, dt, s_leader):
+        '''
+        Update function for continuous actions
+        '''
         # dont drive backwards
         self.velocity += (self.acceleration * dt, 0)
         self.velocity.x = max(0.0, min(self.velocity.x, self.max_velocity))
