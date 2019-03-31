@@ -130,6 +130,12 @@ class Car(pygame.sprite.Sprite):
         self.position += self.velocity.rotate(-self.angle) * dt
         # self.angle += degrees(angular_velocity) * dt
 
+    def update(self, dt, s_leader, continuous_ctrl):
+        if continuous_ctrl:
+            self.update_c(dt, s_leader)
+        else:
+            self.update_d(dt, s_leader)
+
     def update_c(self, dt, s_leader):
         '''
         Update function for continuous actions
@@ -168,51 +174,48 @@ class Car(pygame.sprite.Sprite):
         self.rect.x = self.position.x * Constants.ppu - self.rect.width / 2
         self.rect.y = self.position.y * Constants.ppu - self.rect.height / 2
 
-    def update(self, dt, s_leader):
+    def update_d(self, dt, s_leader):
+        if self.do_accelerate:
+            self.accelerate(dt)
+        elif self.do_decelerate:
+            self.decelerate(dt)
+        elif self.do_maintain:
+            self.maintain(dt)
 
-        self.update_c(dt, s_leader)
-        
-        # if self.do_accelerate:
-        #     self.accelerate(dt)
-        # elif self.do_decelerate:
-        #     self.decelerate(dt)
-        # elif self.do_maintain:
-        #     self.maintain(dt)
+        self.velocity += (self.acceleration * dt, 0)
+        self.velocity.x = max(0.0, min(self.velocity.x, self.max_velocity))
 
-        # self.velocity += (self.acceleration * dt, 0)
-        # self.velocity.x = max(0.0, min(self.velocity.x, self.max_velocity))
+        # trigger movement
+        new_lane_pos = (Constants.LANE_WIDTH * self.lane_id - (Constants.LANE_WIDTH/2))/Constants.ppu
+        # print(new_lane_pos)
+        if self.left_mode:
+            self.moveLeft(dt, new_lane_pos)
+        elif self.right_mode:
+            self.moveRight(dt, new_lane_pos)
 
-        # # trigger movement
-        # new_lane_pos = (Constants.LANE_WIDTH * self.lane_id - (Constants.LANE_WIDTH/2))/Constants.ppu
-        # # print(new_lane_pos)
-        # if self.left_mode:
-        #     self.moveLeft(dt, new_lane_pos)
-        # elif self.right_mode:
-        #     self.moveRight(dt, new_lane_pos)
+        if self.steering:
+            turning_radius = self.length / tan(radians(self.steering))
+            self.angular_velocity = self.velocity.x / turning_radius
+        else:
+            self.angular_velocity = 0
 
-        # if self.steering:
-        #     turning_radius = self.length / tan(radians(self.steering))
-        #     self.angular_velocity = self.velocity.x / turning_radius
-        # else:
-        #     self.angular_velocity = 0
+        self.position += self.velocity.rotate(-self.angle) * dt
+        self.position.y -= degrees(self.angular_velocity) * dt * dt
 
-        # self.position += self.velocity.rotate(-self.angle) * dt
-        # self.position.y -= degrees(self.angular_velocity) * dt * dt
+        if self.id == s_leader.id:
+            self.position.x = 10
+        else:
+            self.position.x -= s_leader.velocity.x * dt
 
-        # if self.id == s_leader.id:
-        #     self.position.x = 10
-        # else:
-        #     self.position.x -= s_leader.velocity.x * dt
+        # prevent the car from leaving the road
+        if self.position.y < int((Constants.CAR_HEIGHT/2)/Constants.ppu):
+            self.position.y = max(self.position.y, int((Constants.CAR_HEIGHT/2)/Constants.ppu))
+        elif self.position.y > int((Constants.HEIGHT - int(Constants.CAR_HEIGHT/2))/Constants.ppu):
+            self.position.y = min(self.position.y, int((Constants.HEIGHT - int((Constants.CAR_HEIGHT/2)/Constants.ppu))/Constants.ppu))
 
-        # # prevent the car from leaving the road
-        # if self.position.y < int((Constants.CAR_HEIGHT/2)/Constants.ppu):
-        #     self.position.y = max(self.position.y, int((Constants.CAR_HEIGHT/2)/Constants.ppu))
-        # elif self.position.y > int((Constants.HEIGHT - int(Constants.CAR_HEIGHT/2))/Constants.ppu):
-        #     self.position.y = min(self.position.y, int((Constants.HEIGHT - int((Constants.CAR_HEIGHT/2)/Constants.ppu))/Constants.ppu))
-
-        # # update rect for collision detection
-        # self.rect.x = self.position.x * Constants.ppu - self.rect.width / 2
-        # self.rect.y = self.position.y * Constants.ppu - self.rect.height / 2
+        # update rect for collision detection
+        self.rect.x = self.position.x * Constants.ppu - self.rect.width / 2
+        self.rect.y = self.position.y * Constants.ppu - self.rect.height / 2
 
     def setCruiseVel(self, cruise_vel):
         self.cruise_vel = cruise_vel
@@ -342,6 +345,7 @@ class HighwaySimulator:
         self.inf_obstacles = inf_obstacles
         self.is_data_saved = is_data_saved
         self.render = render
+        self.continuous_ctrl = False
         self.total_runs = 100
         self.run_duration = 60 # 60 seconds
 
@@ -385,25 +389,32 @@ class HighwaySimulator:
             self.screen.blit(rotated, auto.position * Constants.ppu - (rect.width / 2, rect.height / 2))
 
     def manualControl(self, car, all_obstacles, dt):
+        if self.continuous_ctrl:
+            self.continuousControl(car, all_obstacles, dt)
+        else:
+            self.discreteControl(car, all_obstacles)
+
+    def discreteControl(self, car, all_obstacles):
         # User input
-        # pressed = pygame.key.get_pressed()
+        pressed = pygame.key.get_pressed()
 
-        # if pressed[pygame.K_UP] and not car.do_accelerate:
-        #     self.accelerate(car)
-        # elif pressed[pygame.K_DOWN] and not car.do_maintain:
-        #     self.maintain(car, all_obstacles)
-        # elif pressed[pygame.K_SPACE] and not car.do_decelerate:
-        #     self.decelerate(car)
+        if pressed[pygame.K_UP] and not car.do_accelerate:
+            self.accelerate(car)
+        elif pressed[pygame.K_DOWN] and not car.do_maintain:
+            self.maintain(car, all_obstacles)
+        elif pressed[pygame.K_SPACE] and not car.do_decelerate:
+            self.decelerate(car)
 
-        # car.acceleration = max(-car.max_acceleration, min(car.acceleration, car.max_acceleration))
+        car.acceleration = max(-car.max_acceleration, min(car.acceleration, car.max_acceleration))
 
-        # if pressed[pygame.K_RIGHT] and not car.right_mode:
-        #     self.turn_right(car)
-        # elif pressed[pygame.K_LEFT] and not car.left_mode:
-        #     self.turn_left(car)
+        if pressed[pygame.K_RIGHT] and not car.right_mode:
+            self.turn_right(car)
+        elif pressed[pygame.K_LEFT] and not car.left_mode:
+            self.turn_left(car)
 
-        # car.steering = max(-car.max_steering, min(car.steering, car.max_steering))
-
+        car.steering = max(-car.max_steering, min(car.steering, car.max_steering))
+    
+    def continuousControl(self, car, all_obstacles, dt):
         # User input
         pressed = pygame.key.get_pressed()
 
@@ -456,8 +467,14 @@ class HighwaySimulator:
         # Note that every player acts as a leader when selecting their actions
         return selected_action
 
-    # execute the given action for the specified leader
     def executeAction(self, selected_action, leader, all_obstacles):
+        if self.continuous_ctrl:
+            self.executeActionContinuous(selected_action, leader, all_obstacles)
+        else:
+            self.executeActionDiscrete(selected_action, leader, all_obstacles)
+
+    # execute the given action for the specified leader
+    def executeActionDiscrete(self, selected_action, leader, all_obstacles):
         if (selected_action == Action.ACCELERATE) and not leader.do_accelerate:
             self.accelerate(leader)
         elif (selected_action == Action.MAINTAIN) and not leader.do_maintain:
@@ -473,8 +490,15 @@ class HighwaySimulator:
             self.turn_left(leader)
 
         leader.steering = max(-leader.max_steering, min(leader.steering, leader.max_steering))
-        
-        return
+
+    def executeActionContinuous(self, selected_action, leader, all_obstacles, dt):
+        # TODO: need to test
+        # TODO: assume selected_action[0] is acceleration between -1 and 1
+        leader.acceleration += selected_action[0] * leader.max_acceleration * dt
+        leader.acceleration = max(-leader.max_acceleration, min(leader.acceleration, leader.max_acceleration))
+
+        leader.steering += selected_action[1] * leader.max_steering * dt
+        leader.steering = max(-leader.max_steering, min(leader.steering, leader.max_steering))
 
     # these booleans are required to ensure the action is executed over a period of time
     def accelerate(self, car):
@@ -640,7 +664,7 @@ class HighwaySimulator:
                             # print("Collisions: ",num_obs_collisions+num_agent_collisions)
 
                     # update all sprites
-                    all_agents.update(dt, reference_car)
+                    all_agents.update(dt, reference_car, self.continuous_ctrl)
                     all_coming_cars.update(dt, reference_car)
 
                     # log the velocity and distance travelled

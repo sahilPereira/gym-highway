@@ -111,6 +111,8 @@ fcnet_activation = "relu"
 # gym environment register
 env_id = 'Highway-train-v0'
 env_entry_point = 'gym_highway.envs:HighwayEnv'
+env_cont_id = 'Highway-cont-train-v0'
+env_cont_entry_point = 'gym_highway.envs:HighwayEnvContinuous'
 env_train_kwargs = {'manual': False, 'inf_obs': True, 'save': False, 'render': False, 'real_time': False}
 env_play_kwargs = {'manual': False, 'inf_obs': True, 'save': False, 'render': True, 'real_time': True}
 results_dir = '~/gym_highway_results'

@@ -1,1 +1,2 @@
 from gym_highway.envs.highway_env import HighwayEnv
+from gym_highway.envs.highway_env_cont import HighwayEnvContinuous
