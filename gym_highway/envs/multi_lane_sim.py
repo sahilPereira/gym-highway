@@ -13,8 +13,8 @@ import pygame
 from pygame.math import Vector2
 
 # import stackelbergPlayer as SCP
-# from gym_highway.envs.stackelbergPlayer import StackelbergPlayer, Action
-from stackelbergPlayer import Action, StackelbergPlayer
+from gym_highway.envs.stackelbergPlayer import StackelbergPlayer, Action
+# from stackelbergPlayer import Action, StackelbergPlayer
 
 
 class Constants():
@@ -326,7 +326,7 @@ class Obstacle(pygame.sprite.Sprite):
         self.rect.y = self.position.y * Constants.ppu - self.rect.height / 2
 
 class HighwaySimulator:
-    def __init__(self, cars_list, obstacle_list, is_manual=False, inf_obstacles=False, is_data_saved=False, render=False, is_real_time=False):
+    def __init__(self, cars_list, obstacle_list, manual=False, inf_obs=False, saved=False, render=False, real_time=False, continuous=False):
         pygame.init()
         width = Constants.WIDTH
         height = Constants.HEIGHT
@@ -334,18 +334,18 @@ class HighwaySimulator:
             pygame.display.set_caption("Car tutorial")
             self.screen = pygame.display.set_mode((width, height))
         self.clock = pygame.time.Clock()
-        self.ticks = 60.0 if is_real_time else 36.0
-        self.framerate = 120.0 if is_real_time else 0.0
+        self.ticks = 60.0 if real_time else 36.0
+        self.framerate = 120.0 if real_time else 0.0
         self.exit = False
 
         # simulation options
         self.cars_list = cars_list
         self.obstacle_list = obstacle_list
-        self.is_manual = is_manual
-        self.inf_obstacles = inf_obstacles
-        self.is_data_saved = is_data_saved
+        self.is_manual = manual
+        self.inf_obstacles = inf_obs
+        self.is_data_saved = saved
         self.render = render
-        self.continuous_ctrl = False
+        self.continuous_ctrl = continuous
         self.total_runs = 100
         self.run_duration = 60 # 60 seconds
 
@@ -467,9 +467,9 @@ class HighwaySimulator:
         # Note that every player acts as a leader when selecting their actions
         return selected_action
 
-    def executeAction(self, selected_action, leader, all_obstacles):
+    def executeAction(self, selected_action, leader, all_obstacles, dt):
         if self.continuous_ctrl:
-            self.executeActionContinuous(selected_action, leader, all_obstacles)
+            self.executeActionContinuous(selected_action, leader, all_obstacles, dt)
         else:
             self.executeActionDiscrete(selected_action, leader, all_obstacles)
 
@@ -870,7 +870,7 @@ class HighwaySimulator:
 
         # workign with just one agent for now
         # TODO: need to change this when working with multiple agents
-        self.executeAction(action, self.reference_car, self.all_obstacles)
+        self.executeAction(action, self.reference_car, self.all_obstacles, dt)
 
         # collision check
         if not self.collision_count_lock:
@@ -893,7 +893,7 @@ class HighwaySimulator:
                     self.is_done = True
 
         # update all sprites
-        self.all_agents.update(dt, self.reference_car)
+        self.all_agents.update(dt, self.reference_car, self.continuous_ctrl)
         self.all_coming_cars.update(dt, self.reference_car)
 
         # max reward per step is 1.0 for going at max velocity
@@ -982,18 +982,36 @@ class HighwaySimulator:
             -------
             [[pos_x, pos_y, vel_x, vel_y], ... ]
         """
+        # ref_car = self.reference_car
+
+        # # ob_list = []
+        # # ob_list.append([ref_car.position.x, ref_car.position.y, ref_car.velocity.x, ref_car.angular_velocity])
+        # ob_list = [None]*len(self.all_obstacles)
+        # ob_list[0] = [ref_car.position.x, ref_car.position.y, ref_car.velocity.x, ref_car.angular_velocity]
+        # # for idx, obj in enumerate(self.all_obstacles):
+        # for obj in self.all_obstacles:
+        #     if obj != ref_car:
+        #         # ob_list.append([obj.position.x, obj.position.y, obj.velocity.x, obj.velocity.y])
+        #         ob_list[obj.id] = [obj.position.x, obj.position.y, obj.velocity.x, obj.velocity.y]
+
+        # observations = numpy.array(ob_list, dtype=numpy.float32).flatten()
+        # return observations
+
         ref_car = self.reference_car
 
-        # ob_list = []
-        # ob_list.append([ref_car.position.x, ref_car.position.y, ref_car.velocity.x, ref_car.angular_velocity])
-        ob_list = [None]*len(self.all_obstacles)
-        ob_list[0] = [ref_car.position.x, ref_car.position.y, ref_car.velocity.x, ref_car.angular_velocity]
-        # for idx, obj in enumerate(self.all_obstacles):
+        other_pos = [None]*(len(self.all_obstacles)-1) # all agents except the one in focus
+        other_vel = [None]*(len(self.all_obstacles)-1)
         for obj in self.all_obstacles:
             if obj != ref_car:
-                # ob_list.append([obj.position.x, obj.position.y, obj.velocity.x, obj.velocity.y])
-                ob_list[obj.id] = [obj.position.x, obj.position.y, obj.velocity.x, obj.velocity.y]
+                # find place for agent info in the array
+                placement_idx = obj.id
+                if obj.id > ref_car.id: placement_idx -= 1
+                
+                other_pos[placement_idx] = list(obj.position - ref_car.position)
+                other_vel[placement_idx] = list(obj.velocity - ref_car.velocity)
 
+        ob_list = [(ref_car.acceleration, ref_car.steering)] + [ref_car.position] + other_pos + [ref_car.velocity] + other_vel
+        assert len(ob_list) == len(other_pos)+len(other_vel)+3
         observations = numpy.array(ob_list, dtype=numpy.float32).flatten()
         return observations
 
@@ -1147,7 +1165,8 @@ if __name__ == '__main__':
     parser = ArgumentParser()
     parser.add_argument("--manual", dest="manual", action='store_true', help="use manual driving mode; default is using Stackelberg driving model")
     parser.add_argument("--inf_obs", dest="inf_obs", action='store_true', help="produce new obstacle on a lane when current obstacle is out of window")
-    parser.add_argument("--real_time", dest="real_time", action='store_true', help="save performance metrics")
+    parser.add_argument("--real_time", dest="real_time", action='store_true', help="Run simulation in real time")
+    parser.add_argument("--cont_ctrl", dest="real_time", action='store_true', help="Run simulation with continuous control")
     parser.add_argument("--save", dest="save_data", action='store_true', help="save performance metrics")
 
     args = parser.parse_args()
@@ -1166,6 +1185,6 @@ if __name__ == '__main__':
     # cars_list = [car_1, car_2, car_3, car_4, car_5]
     cars_list = [car_1]
 
-    game = HighwaySimulator(cars_list, obstacle_list, args.manual, args.inf_obs, args.save_data, True, args.real_time)
+    game = HighwaySimulator(cars_list, obstacle_list, args.manual, args.inf_obs, args.save_data, True, args.real_time, args.cont_ctrl)
     # run the simulation
     game.run(cars_list, obstacle_list, args.manual, args.inf_obs, args.save_data)

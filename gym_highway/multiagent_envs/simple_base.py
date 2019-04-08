@@ -4,7 +4,7 @@ import models.config as Config
 from gym_highway.multiagent_envs import highway_constants as Constants
 from gym_highway.multiagent_envs.agent import Car, Obstacle
 from gym_highway.multiagent_envs.highway_core import HighwaySimulator
-from gym_highway.multiagent_envs.highway_world import HighwayWorld
+# from gym_highway.multiagent_envs.highway_world import HighwayWorld
 from gym_highway.multiagent_envs.multiagent.scenario import BaseScenario
 
 

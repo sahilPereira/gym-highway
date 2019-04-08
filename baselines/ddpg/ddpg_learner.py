@@ -81,8 +81,12 @@ class DDPG(object):
         # self.actions = tf.placeholder(tf.float32, shape=(None,) + action_shape, name='actions')
         
         # create distribtuions
-        act_pdtype_n = make_pdtype(action_shape)
-        self.actions = act_pdtype_n.sample_placeholder([None], name='actions')
+        from gym import spaces
+        if isinstance(action_shape, spaces.Discrete):
+            act_pdtype_n = make_pdtype(action_shape)
+            self.actions = act_pdtype_n.sample_placeholder([None], name='actions')
+        else:
+            self.actions = tf.placeholder(tf.float32, shape=(None,) + action_shape.shape, name='actions')
 
         self.critic_target = tf.placeholder(tf.float32, shape=(None, 1), name='critic_target')
         self.param_noise_stddev = tf.placeholder(tf.float32, shape=(), name='param_noise_stddev')

@@ -18,10 +18,24 @@ class HighwayEnvContinuous(HighwayEnv):
         self.env.continuous_ctrl = True
         # define action space
         self.action_space = spaces.Box(np.array([-1.0, -1.0]), np.array([1.0, 1.0]), dtype=np.float32)
+
         # define observation space
         num_vehicles = len(self.env.cars_list) + 3 # max 3 obstacles on road at any given time
-        low = np.array([-60.0, 0.0, 0.0, -20.0]*num_vehicles).flatten()
-        high = np.array([60.0, 8.0, 20.0, 20.0]*num_vehicles).flatten()
+        control_low = np.array([-5.0, -30.0])
+        control_high = np.array([5.0, 30.0])
+        
+        pos_low = np.array([-60.0, -8.0]*num_vehicles).flatten()
+        vel_low = np.array([-20.0, -20.0]*num_vehicles).flatten()
+
+        pos_high = np.array([60.0, 8.0]*num_vehicles).flatten()
+        vel_high = np.array([20.0, 20.0]*num_vehicles).flatten()
+        
+        low = np.concatenate((control_low, pos_low, vel_low))
+        high = np.concatenate((control_high, pos_high, vel_high))
+
+        assert len(low) == len(control_low)+len(pos_low)+len(vel_low)
+        assert len(high) == len(control_high)+len(pos_high)+len(vel_high)
+
         self.observation_space = spaces.Box(low, high, dtype=np.float32)
 
     def step(self, action):
