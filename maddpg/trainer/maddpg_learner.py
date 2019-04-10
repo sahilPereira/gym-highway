@@ -177,7 +177,7 @@ def learn(env,
         start_time = time.time()
 
         epoch_episode_rewards = np.zeros(len(trainers), dtype = np.float32)
-        epoch_episode_steps = np.zeros(len(trainers), dtype = int)
+        epoch_episode_steps = np.zeros(nenvs, dtype = int)
         epoch_actions = 0.0
         epoch_qs = []
         epoch_episodes = 0
@@ -193,6 +193,7 @@ def learn(env,
 
         saver = tf.train.Saver()
         episode_rewards_history = deque(maxlen=100)
+        episode_steps_history = deque(maxlen=100)
 
         # 9. nested training loop
         print('Starting iterations...')
@@ -232,7 +233,8 @@ def learn(env,
                             # Episode done.
                             epoch_episode_rewards += episode_reward[d]
                             episode_rewards_history.append(sum(episode_reward[d]))
-                            epoch_episode_steps += episode_step[d]
+                            epoch_episode_steps[d] += episode_step[d]
+                            episode_steps_history.append(episode_step[d])
                             episode_reward[d] = np.zeros(len(trainers), dtype = np.float32)
                             episode_step[d] = 0
                             epoch_episodes += 1
@@ -267,20 +269,21 @@ def learn(env,
             # 10. logging metrics
             duration = time.time() - start_time
             combined_stats = {}
-            combined_stats[Config.tensorboard_rootdir+'rollout/return'] = np.mean(epoch_episode_rewards) / float(episodes) # average return of agents over episodes
-            combined_stats[Config.tensorboard_rootdir+'rollout/return_history'] = np.mean(episode_rewards_history)
-            combined_stats[Config.tensorboard_rootdir+'rollout/episode_steps'] = np.mean(epoch_episode_steps) / float(episodes) # average steps of agents over episodes
-            combined_stats[Config.tensorboard_rootdir+'train/loss_actor'] = np.mean(loss_metrics['p_loss'])
-            combined_stats[Config.tensorboard_rootdir+'train/loss_critic'] = np.mean(loss_metrics['q_loss'])
-            combined_stats[Config.tensorboard_rootdir+'train/mean_target_q'] = np.mean(loss_metrics['mean_target_q'])
-            combined_stats[Config.tensorboard_rootdir+'train/mean_rew'] = np.mean(loss_metrics['mean_rew'])
-            combined_stats[Config.tensorboard_rootdir+'train/mean_target_q_next'] = np.mean(loss_metrics['mean_target_q_next'])
-            combined_stats[Config.tensorboard_rootdir+'train/std_target_q'] = np.mean(loss_metrics['std_target_q'])
-            combined_stats[Config.tensorboard_rootdir+'total/duration'] = duration
-            combined_stats[Config.tensorboard_rootdir+'total/steps_per_second'] = float(t) / float(duration)
-            combined_stats[Config.tensorboard_rootdir+'total/episodes'] = episodes
-            combined_stats[Config.tensorboard_rootdir+'rollout/episodes'] = epoch_episodes
-            combined_stats[Config.tensorboard_rootdir+'rollout/return_std'] = np.std(epoch_episode_rewards) # std of returns between agents
+            combined_stats[Config.tensorboard_rootdir+'ro/return'] = np.mean(epoch_episode_rewards) / float(episodes) # average return of agents over episodes
+            combined_stats[Config.tensorboard_rootdir+'ro/return_history'] = np.mean(episode_rewards_history)
+            combined_stats[Config.tensorboard_rootdir+'ro/episode_steps'] = np.mean(epoch_episode_steps) / float(episodes) # average steps of agents over episodes
+            combined_stats[Config.tensorboard_rootdir+'ro/episode_steps_history'] = np.mean(episode_steps_history)
+            combined_stats[Config.tensorboard_rootdir+'tr/loss_actor'] = np.mean(loss_metrics['p_loss'])
+            combined_stats[Config.tensorboard_rootdir+'tr/loss_critic'] = np.mean(loss_metrics['q_loss'])
+            combined_stats[Config.tensorboard_rootdir+'tr/mean_target_q'] = np.mean(loss_metrics['mean_target_q'])
+            combined_stats[Config.tensorboard_rootdir+'tr/mean_rew'] = np.mean(loss_metrics['mean_rew'])
+            combined_stats[Config.tensorboard_rootdir+'tr/mean_target_q_next'] = np.mean(loss_metrics['mean_target_q_next'])
+            combined_stats[Config.tensorboard_rootdir+'tr/std_target_q'] = np.mean(loss_metrics['std_target_q'])
+            combined_stats[Config.tensorboard_rootdir+'to/duration'] = duration
+            combined_stats[Config.tensorboard_rootdir+'to/steps_per_second'] = float(t) / float(duration)
+            combined_stats[Config.tensorboard_rootdir+'to/episodes'] = episodes
+            combined_stats[Config.tensorboard_rootdir+'ro/episodes'] = epoch_episodes
+            combined_stats[Config.tensorboard_rootdir+'ro/std_return'] = np.std(epoch_episode_rewards) # std of returns between agents
             
             # Evaluation statistics.
             # if eval_env is not None:
@@ -298,8 +301,8 @@ def learn(env,
             combined_stats = {k : v / mpi_size for (k,v) in zip(combined_stats.keys(), combined_stats_sums)}
 
             # Total statistics.
-            combined_stats[Config.tensorboard_rootdir+'total/epochs'] = epoch + 1
-            combined_stats[Config.tensorboard_rootdir+'total/steps'] = t
+            combined_stats[Config.tensorboard_rootdir+'to/epochs'] = epoch + 1
+            combined_stats[Config.tensorboard_rootdir+'to/steps'] = t
 
             for key in sorted(combined_stats.keys()):
                 logger.record_tabular(key, combined_stats[key])
