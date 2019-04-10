@@ -25,6 +25,33 @@ def make_update_exp(vals, target_vals):
     expression = tf.group(*expression)
     return U.function([], [], updates=[expression])
 
+def minimax_update(act_input_n, p_index, num_adversaries, adv_eps, adv_eps_s, pg_loss, obs_ph_n, num_units, q):
+    '''
+    Apply minimax update on the Q function as described in M3DDPG
+    
+    - Compute gradients of Q wrt actions of all agents
+    - Scale the gradients by adv_rate
+    - Add the perturbation to the original action (mimicking worse case action in that situation)
+    '''
+    if adversarial:
+        num_agents = len(act_input_n)
+        if p_index < num_adversaries:
+            adv_rate = [adv_eps_s *(i < num_adversaries) + adv_eps * (i >= num_adversaries) for i in range(num_agents)]
+        else:
+            adv_rate = [adv_eps_s *(i >= num_adversaries) + adv_eps * (i < num_adversaries) for i in range(num_agents)]
+        print("      adv rate for p_index : ", p_index, adv_rate)
+        raw_perturb = tf.gradients(pg_loss, act_input_n)
+        perturb = [tf.stop_gradient(tf.nn.l2_normalize(elem, axis = 1)) for elem in raw_perturb]
+        perturb = [perturb[i] * adv_rate[i] for i in range(num_agents)]
+        new_act_n = [perturb[i] + act_input_n[i] if i != p_index
+                else act_input_n[i] for i in range(len(act_input_n))]
+        
+        adv_q_input = tf.concat(obs_ph_n + new_act_n, 1)
+        adv_q = q_func(adv_q_input, 1, scope = "q_func", reuse=True, num_units=num_units)[:,0]
+        pg_loss = -tf.reduce_mean(q)
+
+    return pg_loss
+
 def p_train(make_obs_ph_n, act_space_n, p_index, p_func, q_func, optimizer, grad_norm_clipping=None, local_q_func=False, num_units=64, scope="trainer", reuse=None):
     with tf.variable_scope(scope, reuse=reuse):
         # create distribtuions
@@ -52,6 +79,9 @@ def p_train(make_obs_ph_n, act_space_n, p_index, p_func, q_func, optimizer, grad
             q_input = tf.concat([obs_ph_n[p_index], act_input_n[p_index]], 1)
         q = q_func(q_input, 1, scope="q_func", reuse=True, num_units=num_units)[:,0]
         pg_loss = -tf.reduce_mean(q)
+
+        # M3DDPG mod
+        # pg_loss = minimax_update(act_input_n, p_index, num_adversaries, adv_eps, adv_eps_s, pg_loss, obs_ph_n, num_units, q)
 
         loss = pg_loss + p_reg * 1e-3
 
