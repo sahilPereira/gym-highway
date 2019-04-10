@@ -67,6 +67,12 @@ class Car(pygame.sprite.Sprite):
 
         return sim_car
 
+    def update(self, dt, s_leader, continuous_ctrl):
+        if continuous_ctrl:
+            self.update_c(dt, s_leader)
+        else:
+            self.update_d(dt, s_leader)
+
     def update_c(self, dt, s_leader):
         '''
         Update function for continuous actions
@@ -82,7 +88,7 @@ class Car(pygame.sprite.Sprite):
             angular_velocity = 0
 
         self.position += self.velocity.rotate(-self.angle) * dt
-        self.angle += degrees(angular_velocity) * dt
+        self.position.y -= angular_velocity * dt
 
         if self.id == s_leader.id:
             self.position.x = 10
@@ -99,7 +105,7 @@ class Car(pygame.sprite.Sprite):
         self.rect.x = self.position.x * Constants.ppu - self.rect.width / 2
         self.rect.y = self.position.y * Constants.ppu - self.rect.height / 2
 
-    def update(self, dt, s_leader):
+    def update_d(self, dt, s_leader):
         
         if self.do_accelerate:
             self.accelerate(dt)

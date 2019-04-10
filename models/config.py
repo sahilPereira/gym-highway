@@ -89,8 +89,8 @@ maddpg_train_args = {'nb_epochs':None, # with default settings, perform 1M steps
 				   'num_adversaries':0,
 				   'rb_size':1e6,
 				   # policy network_kwargs
-				   'num_layers':5, 
-				   'num_hidden':256, 
+				   'num_layers':4, 
+				   'num_hidden':[256, 512, 256, 64], 
 				   'activation':'relu',
 				   'layer_norm':False
 				   }
@@ -121,6 +121,9 @@ save_path = '~/gym_highway_results/ppo2_test1'
 # gym multi-agent env register
 ma_env_id = 'MA-Highway-train-v0'
 ma_env_entry_point = 'gym_highway.multiagent_envs:MultiAgentEnv'
+# gym multi-agent env continuous actions register
+ma_c_env_id = 'MA-Highway-cont-train-v0'
+ma_c_env_entry_point = 'gym_highway.multiagent_envs:MultiAgentEnvContinuous'
 
 # logging
 baselines_log_format = ['stdout','tensorboard']

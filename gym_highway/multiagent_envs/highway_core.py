@@ -13,7 +13,7 @@ from gym_highway.multiagent_envs import highway_constants as Constants
 from gym_highway.multiagent_envs.agent import Car, Obstacle
 
 class HighwaySimulator:
-    def __init__(self, manual=False, inf_obs=False, save=False, render=False, real_time=False):
+    def __init__(self, manual=False, inf_obs=False, save=False, render=False, real_time=False, continuous=False):
         pygame.init()
         width = Constants.WIDTH
         height = Constants.HEIGHT
@@ -22,7 +22,7 @@ class HighwaySimulator:
             self.screen = pygame.display.set_mode((width, height))
         self.clock = pygame.time.Clock()
         self.ticks = 60.0 if real_time else 36.0
-        self.framerate = self.ticks if real_time else 0.0
+        self.framerate = self.ticks*2 if real_time else 0.0
         self.exit = False
 
         # simulation options
@@ -33,6 +33,7 @@ class HighwaySimulator:
         self.is_data_saved = save
         self.render = render
         self.run_duration = 60 # 60 seconds
+        self.continuous_ctrl = continuous
 
         # list of agents and entities (can change at execution-time!)
         self.agents = None
@@ -102,26 +103,39 @@ class HighwaySimulator:
             rect = rotated.get_rect()
             self.screen.blit(rotated, auto.position * Constants.ppu - (rect.width / 2, rect.height / 2))
 
-    # execute the given action for the specified agent
-    def executeAction(self, agent, all_obstacles):
+    def executeAction(self, agent, all_obstacles, dt):
         selected_action = agent.action
-        if (selected_action == actions.Action.ACCELERATE) and not agent.do_accelerate:
-            self.accelerate(agent)
-        elif (selected_action == actions.Action.MAINTAIN) and not agent.do_maintain:
-            self.maintain(agent, all_obstacles)
-        # elif (selected_action == actions.Action.DECELERATE) and not agent.do_decelerate:
-        #     self.decelerate(agent)
+        if self.continuous_ctrl:
+            self.executeActionContinuous(selected_action, agent, all_obstacles, dt)
+        else:
+            self.executeActionDiscrete(selected_action, agent, all_obstacles)
 
-        agent.acceleration = max(-agent.max_acceleration, min(agent.acceleration, agent.max_acceleration))
+    # execute the given action for the specified leader
+    def executeActionDiscrete(self, selected_action, leader, all_obstacles):
+        if (selected_action == Action.ACCELERATE) and not leader.do_accelerate:
+            self.accelerate(leader)
+        elif (selected_action == Action.MAINTAIN) and not leader.do_maintain:
+            self.maintain(leader, all_obstacles)
+        # elif (selected_action == Action.DECELERATE) and not leader.do_decelerate:
+        #     self.decelerate(leader)
 
-        if (selected_action == actions.Action.RIGHT) and not agent.right_mode:
-            self.turn_right(agent)
-        elif (selected_action == actions.Action.LEFT) and not agent.left_mode:
-            self.turn_left(agent)
+        leader.acceleration = max(-leader.max_acceleration, min(leader.acceleration, leader.max_acceleration))
 
-        agent.steering = max(-agent.max_steering, min(agent.steering, agent.max_steering))
-        
-        return
+        if (selected_action == Action.RIGHT) and not leader.right_mode:
+            self.turn_right(leader)
+        elif (selected_action == Action.LEFT) and not leader.left_mode:
+            self.turn_left(leader)
+
+        leader.steering = max(-leader.max_steering, min(leader.steering, leader.max_steering))
+
+    def executeActionContinuous(self, selected_action, leader, all_obstacles, dt):
+        # TODO: need to test
+        # TODO: assume selected_action[0] is acceleration between -1 and 1
+        leader.acceleration += selected_action[0] * leader.max_acceleration * dt
+        leader.acceleration = max(-leader.max_acceleration, min(leader.acceleration, leader.max_acceleration))
+
+        leader.steering += selected_action[1] * leader.max_steering * dt
+        leader.steering = max(-leader.max_steering, min(leader.steering, leader.max_steering))
 
     # these booleans are required to ensure the action is executed over a period of time
     def accelerate(self, car):
@@ -258,12 +272,12 @@ class HighwaySimulator:
 
         # execute action for each agent (actions are updated in the env after calling update())
         for agent in self.agents:
-            self.executeAction(agent, self.all_obstacles)
+            self.executeAction(agent, self.all_obstacles, dt)
 
         # update all sprites
         # this will update all the agents and obstacles based on the actions selected
-        self.agents.update(dt, self.reference_car)
-        self.scripted_agents.update(dt, self.reference_car)
+        self.agents.update(dt, self.reference_car, self.continuous_ctrl)
+        self.scripted_agents.update(dt, self.reference_car, self.continuous_ctrl)
 
         # keep track of agent velocity at end of every action
         if self.log_timer >= Constants.ACTION_RESET_TIME:
@@ -320,7 +334,7 @@ class HighwaySimulator:
             self.displayPos(self.reference_car.velocity.x)
 
             # display selected action
-            # self.displayAction(action)
+            self.displayAction(self.reference_car.action)
 
             pygame.display.flip()
 
@@ -353,6 +367,8 @@ class HighwaySimulator:
 
     def get_state(self):
         """
+            @ Deprecated
+            
             FIXME: sprites are not ordered! the observations are randomized each step!
 
             Observations correspond to positions and velocities of all vehicles on the road.

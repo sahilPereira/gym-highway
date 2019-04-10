@@ -1,1 +1,2 @@
 from gym_highway.multiagent_envs.highway_env import MultiAgentEnv
+from gym_highway.multiagent_envs.highway_ma_c_env import MultiAgentEnvContinuous

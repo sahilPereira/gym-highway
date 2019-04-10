@@ -107,11 +107,10 @@ class Scenario(BaseScenario):
                 other_pos[placement_idx] = list(other_agent.position - agent.position)
                 other_vel[placement_idx] = list(other_agent.velocity - agent.velocity)
             
-            ob_list = [agent.position] + other_pos + [agent.velocity] + other_vel
+            ob_list = [(agent.acceleration, agent.steering)] + [agent.position] + other_pos + [agent.velocity] + other_vel
             
-            # print(ob_list)
-            # ob_list should contain pos/vel of current agent and all other agents
-            assert len(ob_list) == len(other_pos)+len(other_vel)+2
+            # ob_list should contain accel/steering/pos/vel of current agent and pos/vel of all other agents
+            assert len(ob_list) == len(other_pos)+len(other_vel)+3
             obv = np.array(ob_list, dtype=np.float32).flatten()
 
             # ensure consistent order

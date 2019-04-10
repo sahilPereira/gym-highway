@@ -11,6 +11,7 @@ import gym
 import numpy as np
 import tensorflow as tf
 import tensorflow.contrib.layers as layers
+from gym import spaces
 from gym.envs.registration import register
 
 import maddpg.common.tf_util as U
@@ -19,12 +20,12 @@ from baselines import logger
 from baselines.common import set_global_seeds
 from baselines.common.cmd_util import (common_arg_parser, make_env,
                                        make_vec_env, parse_unknown_args)
+from baselines.common.models import get_network_builder
 from baselines.common.policies import build_policy
 from baselines.common.tf_util import get_session
 from maddpg.trainer.maddpg import MADDPGAgentTrainer
 from models.utils import (activation_str_function, create_results_dir,
                           parse_cmdline_kwargs, save_configs)
-from baselines.common.models import get_network_builder
 
 try:
     from mpi4py import MPI
@@ -37,10 +38,13 @@ def mlp(num_layers=2, num_hidden=64, activation=tf.tanh, layer_norm=False):
     assert num_hidden == Config.maddpg_train_args['num_hidden']
     assert activation == tf.nn.relu
 
+    if isinstance(num_hidden, int):
+        num_hidden = [num_hidden]*num_layers
+
     def network_fn(X):
         h = X
         for i in range(num_layers):
-            h = layers.fully_connected(h, num_outputs=num_hidden, activation_fn=activation)
+            h = layers.fully_connected(h, num_outputs=num_hidden[i], activation_fn=activation)
         return h
     return network_fn
 
@@ -104,6 +108,9 @@ def learn(env,
           **network_kwargs):
     
     set_global_seeds(seed)
+
+    continuous_ctrl = not isinstance(env.action_space, spaces.Discrete)
+    nb_actions = env.action_space[0].shape[-1] if continuous_ctrl else env.action_space[0].n
 
     # update training parameters
     if total_timesteps is not None:
@@ -169,9 +176,9 @@ def learn(env,
 
         start_time = time.time()
 
-        epoch_episode_rewards = []
-        epoch_episode_steps = []
-        epoch_actions = []
+        epoch_episode_rewards = 0.0
+        epoch_episode_steps = 0.0
+        epoch_actions = 0.0
         epoch_qs = []
         epoch_episodes = 0
 
@@ -204,7 +211,7 @@ def learn(env,
                         actions_n.append([agent.action(obs) for agent, obs in zip(trainers,obs_n[i])])
                         
                     # confirm actions_n is nenvs x num_agents x len(Action)
-                    assert np.array(actions_n).shape == (nenvs, num_agents, env.action_space[0].n)
+                    assert np.array(actions_n).shape == (nenvs, num_agents, nb_actions)
                     
                     # environment step
                     new_obs_n, rew_n, done_n, info_n = env.step(actions_n)
@@ -216,21 +223,16 @@ def learn(env,
                     # Book-keeping
                     for i, agent in enumerate(trainers):
                         for b in range(nenvs):
-                            # print(obs0[b])
-                            # print(action[b])
-                            # print(reward[b])
-
                             # save experience from all envs for each agent
                             agent.experience(obs_n[b][i], actions_n[b][i], rew_n[b][i], new_obs_n[b][i], done_n[b][i], None)
                     obs_n = new_obs_n
 
-
                     for d in range(len(done_n)):
                         if any(done_n[d]):
                             # Episode done.
-                            epoch_episode_rewards.append(episode_reward[d])
+                            epoch_episode_rewards += episode_reward[d]
                             episode_rewards_history.append(episode_reward[d])
-                            epoch_episode_steps.append(episode_step[d])
+                            epoch_episode_steps += episode_step[d]
                             episode_reward[d] = 0.
                             episode_step[d] = 0
                             epoch_episodes += 1
@@ -265,9 +267,9 @@ def learn(env,
             # 10. logging metrics
             duration = time.time() - start_time
             combined_stats = {}
-            combined_stats[Config.tensorboard_rootdir+'rollout/return'] = np.mean(epoch_episode_rewards)
+            combined_stats[Config.tensorboard_rootdir+'rollout/return'] = epoch_episode_rewards / float(episodes)
             combined_stats[Config.tensorboard_rootdir+'rollout/return_history'] = np.mean(episode_rewards_history)
-            combined_stats[Config.tensorboard_rootdir+'rollout/episode_steps'] = np.mean(epoch_episode_steps)
+            combined_stats[Config.tensorboard_rootdir+'rollout/episode_steps'] = epoch_episode_steps / float(episodes)
             combined_stats[Config.tensorboard_rootdir+'train/loss_actor'] = np.mean(loss_metrics['p_loss'])
             combined_stats[Config.tensorboard_rootdir+'train/loss_critic'] = np.mean(loss_metrics['q_loss'])
             combined_stats[Config.tensorboard_rootdir+'train/mean_target_q'] = np.mean(loss_metrics['mean_target_q'])
