@@ -168,7 +168,7 @@ def learn(env,
         assert obs_n.shape == (nenvs, num_agents, obs_n.shape[-1])
 
         # 8. initialize metric tracking parameters
-        episode_reward = np.zeros(nenvs, dtype = np.float32) #vector
+        episode_reward = np.zeros((nenvs, len(trainers)), dtype = np.float32) #vector
         episode_step = np.zeros(nenvs, dtype = int) # vector
         episodes = 0 #scalar
         t = 0 # scalar
@@ -176,8 +176,8 @@ def learn(env,
 
         start_time = time.time()
 
-        epoch_episode_rewards = 0.0
-        epoch_episode_steps = 0.0
+        epoch_episode_rewards = np.zeros(len(trainers), dtype = np.float32)
+        epoch_episode_steps = np.zeros(len(trainers), dtype = int)
         epoch_actions = 0.0
         epoch_qs = []
         epoch_episodes = 0
@@ -217,7 +217,7 @@ def learn(env,
                     new_obs_n, rew_n, done_n, info_n = env.step(actions_n)
 
                     # sum of rewards for each env
-                    episode_reward += [sum(r) for r in rew_n]
+                    episode_reward += [r for r in rew_n]
                     episode_step += 1
 
                     # Book-keeping
@@ -231,9 +231,9 @@ def learn(env,
                         if any(done_n[d]):
                             # Episode done.
                             epoch_episode_rewards += episode_reward[d]
-                            episode_rewards_history.append(episode_reward[d])
+                            episode_rewards_history.append(sum(episode_reward[d]))
                             epoch_episode_steps += episode_step[d]
-                            episode_reward[d] = 0.
+                            episode_reward[d] = np.zeros(len(trainers), dtype = np.float32)
                             episode_step[d] = 0
                             epoch_episodes += 1
                             episodes += 1
@@ -267,9 +267,9 @@ def learn(env,
             # 10. logging metrics
             duration = time.time() - start_time
             combined_stats = {}
-            combined_stats[Config.tensorboard_rootdir+'rollout/return'] = epoch_episode_rewards / float(episodes)
+            combined_stats[Config.tensorboard_rootdir+'rollout/return'] = np.mean(epoch_episode_rewards) / float(episodes) # average return of agents over episodes
             combined_stats[Config.tensorboard_rootdir+'rollout/return_history'] = np.mean(episode_rewards_history)
-            combined_stats[Config.tensorboard_rootdir+'rollout/episode_steps'] = epoch_episode_steps / float(episodes)
+            combined_stats[Config.tensorboard_rootdir+'rollout/episode_steps'] = np.mean(epoch_episode_steps) / float(episodes) # average steps of agents over episodes
             combined_stats[Config.tensorboard_rootdir+'train/loss_actor'] = np.mean(loss_metrics['p_loss'])
             combined_stats[Config.tensorboard_rootdir+'train/loss_critic'] = np.mean(loss_metrics['q_loss'])
             combined_stats[Config.tensorboard_rootdir+'train/mean_target_q'] = np.mean(loss_metrics['mean_target_q'])
@@ -280,6 +280,7 @@ def learn(env,
             combined_stats[Config.tensorboard_rootdir+'total/steps_per_second'] = float(t) / float(duration)
             combined_stats[Config.tensorboard_rootdir+'total/episodes'] = episodes
             combined_stats[Config.tensorboard_rootdir+'rollout/episodes'] = epoch_episodes
+            combined_stats[Config.tensorboard_rootdir+'rollout/return_std'] = np.std(epoch_episode_rewards) # std of returns between agents
             
             # Evaluation statistics.
             # if eval_env is not None:
