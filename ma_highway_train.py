@@ -336,6 +336,8 @@ if __name__ == '__main__':
     # create a separate result dir for each run
     results_dir = create_results_dir(args)
 
+    print("-----> Results saved to: {}".format(results_dir))
+
     # save configurations
     save_configs(results_dir, args, extra_args)
 

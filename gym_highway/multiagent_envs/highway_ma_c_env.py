@@ -48,7 +48,7 @@ class MultiAgentEnvContinuous(MultiAgentEnv):
         obs_dim = len(self.observation_callback(self.world)[0])
         for agent in self.agents:
             # action space continuous
-            self.action_space[agent.id] = spaces.Box(np.array([-1.0, -1.0]), np.array([1.0, 1.0]), dtype=np.float32)
+            self.action_space[agent.id] = spaces.Box(low=np.array([-1.0, -1.0]), high=np.array([1.0, 1.0]), dtype=np.float32)
             # observation space
             self.observation_space[agent.id] = spaces.Box(low=-np.inf, high=+np.inf, shape=(obs_dim,), dtype=np.float32)
 
