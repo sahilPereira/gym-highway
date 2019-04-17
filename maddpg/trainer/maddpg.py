@@ -53,8 +53,21 @@ def p_train(make_obs_ph_n, act_space_n, p_index, p_func, q_func, optimizer, grad
         q = q_func(q_input, 1, scope="q_func", reuse=True, num_units=num_units)[:,0]
         pg_loss = -tf.reduce_mean(q)
 
-        # M3DDPG mod
-        # pg_loss = minimax_update(act_input_n, p_index, num_adversaries, adv_eps, adv_eps_s, pg_loss, obs_ph_n, num_units, q)
+        # Gradient computation mods
+        # ---------------------------------------------------------------------------------------------
+        obs_flat_shape = [len(obs_ph_n)*int(obs_ph_n[0].shape[-1])]
+        act_flat_shape = [len(act_space_n)*int(act_space_n[0].shape[-1])]
+        obs_flat_ph = tf.placeholder(tf.float32, shape=[None]+obs_flat_shape, name="obs_flat_input")
+        act_flat_ph = tf.placeholder(tf.float32, shape=[None]+act_flat_shape, name="act_flat_input")
+
+        q_vec_input = tf.concat([obs_flat_ph, act_flat_ph], axis=-1)
+        serial_q = q_func(q_vec_input, 1, scope="q_func", reuse=True, num_units=num_units)[:,0]
+
+        # calculate gradient of serial q value wrt actions
+        raw_grad = tf.gradients(serial_q, act_flat_ph)
+        grad_norm = tf.divide(raw_grad, tf.norm(raw_grad))
+        grad_norm_value = U.function([obs_flat_ph, act_flat_ph], grad_norm)
+        # ---------------------------------------------------------------------------------------------
 
         loss = pg_loss + p_reg * 1e-3
 
@@ -73,7 +86,7 @@ def p_train(make_obs_ph_n, act_space_n, p_index, p_func, q_func, optimizer, grad
         target_act_sample = act_pdtype_n[p_index].pdfromflat(target_p).sample()
         target_act = U.function(inputs=[obs_ph_n[p_index]], outputs=target_act_sample)
 
-        return act, train, update_target_p, {'p_values': p_values, 'target_act': target_act}
+        return act, train, update_target_p, {'p_values': p_values, 'target_act': target_act, 'grad_norm_value':grad_norm_value}
 
 def q_train(make_obs_ph_n, act_space_n, q_index, q_func, optimizer, grad_norm_clipping=None, local_q_func=False, scope="trainer", reuse=None, num_units=64):
     with tf.variable_scope(scope, reuse=reuse):
@@ -131,10 +144,11 @@ def q_train(make_obs_ph_n, act_space_n, q_index, q_func, optimizer, grad_norm_cl
 
         # calculate gradient of target q value wrt actions
         raw_grad = tf.gradients(target_q, act_flat_ph)
-        raw_grad_value = U.function([obs_flat_ph, act_flat_ph], raw_grad)
+        grad_norm = tf.divide(raw_grad, tf.norm(raw_grad))
+        grad_norm_value = U.function([obs_flat_ph, act_flat_ph], grad_norm)
 
         return train, update_target_q, {'q_values': q_values, 'target_q_values': target_q_values,'act_serial_values':act_serial_values, 
-                                        'obs_serial_values':obs_serial_values, 'raw_grad_value': raw_grad_value}
+                                        'obs_serial_values':obs_serial_values, 'grad_norm_value':grad_norm_value}
 
 class MADDPGAgentTrainer(AgentTrainer):
     def __init__(self, name, model, obs_shape_n, act_space_n, agent_index, args, actor_lr=None, critic_lr=None, gamma=None, 
@@ -241,21 +255,22 @@ class MADDPGAgentTrainer(AgentTrainer):
             assert len(act_serial_vals) == self.batch_size
             assert len(obs_serial_vals) == self.batch_size
 
-            # compute partial derivatives of Q function wrt actions
+            # compute L2 normalized partial derivatives of target Q function wrt actions
             # NOTE: this is done one sample at a time to prevent tf.gradient from summing over all target q values
-            raw_grad_value = [self.q_debug['raw_grad_value'](*([[obs_serial_vals[j]]] + [[act_serial_vals[j]]])) for j in range(self.batch_size)]
-            assert len(raw_grad_value) == self.batch_size
+            grad_norm_value = [self.q_debug['grad_norm_value'](*([[obs_serial_vals[j]]] + [[act_serial_vals[j]]])) for j in range(self.batch_size)]
+            assert len(grad_norm_value) == self.batch_size
             
             # scale the raw gradients by alpha
             # TODO: set alpha during init or compute as function of policy or loss
-            perturb = np.array(raw_grad_value) * 0.01
+            perturb = np.array(grad_norm_value) * 0.01
             
             # update leader actions using gradients
             for b in range(self.batch_size):
                 # find all the leaders wrt current agent (agent_index)
                 leading_agents = [[1.0]*act_space if obs_next_n[k][b][2] > obs_next_n[self.agent_index][b][2] else [0.0]*act_space for k in range(self.n)]
                 # filter perturbations to only apply for leading agents
-                epsilon = perturb[b].flatten() * np.array(leading_agents).flatten()
+                # scale by L2 norm of original actions to prevent the perturb from overwhelming action
+                epsilon = perturb[b].flatten() * np.array(leading_agents).flatten() * np.linalg.norm(act_serial_vals[b],2)
                 act_serial_vals[b] += epsilon
             
             # target_q_next = self.q_debug['target_q_values'](*(obs_next_n + target_act_next_n))
@@ -263,6 +278,25 @@ class MADDPGAgentTrainer(AgentTrainer):
             target_q += rew + self.gamma * (1.0 - done) * target_q_next
         target_q /= num_sample
         q_loss = self.q_train(*(obs_n + act_n + [target_q]))
+
+        # get current actions and observations flattened
+        act_serial_vals = self.q_debug['act_serial_values'](*(act_n))
+        obs_serial_vals = self.q_debug['obs_serial_values'](*(obs_n))
+        # compute L2 normalized partial derivatives of Q function wrt actions
+        grad_norm_value = [self.p_debug['grad_norm_value'](*([[obs_serial_vals[j]]] + [[act_serial_vals[j]]])) for j in range(self.batch_size)]
+        assert len(grad_norm_value) == self.batch_size
+        # scale the raw gradients by alpha
+        perturb = np.array(grad_norm_value) * 0.01
+        # update leader actions using these perturbations
+        for b in range(self.batch_size):
+            # find all the leaders wrt current agent (agent_index)
+            leading_agents = [[1.0]*act_space if obs_next_n[k][b][2] > obs_next_n[self.agent_index][b][2] else [0.0]*act_space for k in range(self.n)]
+            # filter perturbations to only apply for leading agents
+            epsilon = perturb[b].flatten() * np.array(leading_agents).flatten() * np.linalg.norm(act_serial_vals[b],2)
+            epsilon_n = [epsilon[k*act_space:(k*act_space)+act_space] for k in range(self.n)]
+            # update each agent action for current batch sample "b"
+            for k in range(self.n):
+                act_n[k][b] += epsilon_n[k]
 
         # train p network
         p_loss = self.p_train(*(obs_n + act_n))
