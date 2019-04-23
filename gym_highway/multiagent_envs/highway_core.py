@@ -298,9 +298,9 @@ class HighwaySimulator:
                     # obstacle_lanes.remove(obstacle.lane_id)
 
                     # add new obstacle
-                    rand_pos_x = float(randrange(70, 80))
+                    rand_pos_x = float(randrange(70, 100))
                     rand_pos_y = Constants.NEW_LANES[obstacle.lane_id-1]
-                    rand_vel_x = float(randrange(5, 15))
+                    rand_vel_x = float(randrange(5, 7))
                     rand_lane_id = obstacle.lane_id
 
                     # use same id for new obstacle so that it maintains its position in the observations

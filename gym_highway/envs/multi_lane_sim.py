@@ -847,10 +847,10 @@ class HighwaySimulator:
         self.reward = 0.0
 
         # pause game when needed
-        for e in pygame.event.get():
-            if e.type == pygame.QUIT:
-                # self.is_done = True
-                self.close()
+        # for e in pygame.event.get():
+        #     if e.type == pygame.QUIT:
+        #         # self.is_done = True
+        #         self.close()
             # if e.type == pygame.KEYDOWN:
             #     if e.key == pygame.K_p: self.is_paused = True
             #     if e.key == pygame.K_r: self.is_paused = False
@@ -926,9 +926,9 @@ class HighwaySimulator:
                     # obstacle_lanes.remove(obstacle.lane_id)
 
                     # add new obstacle
-                    rand_pos_x = float(randrange(70, 80))
+                    rand_pos_x = float(random.uniform(70, 110))
                     rand_pos_y = Constants.NEW_LANES[obstacle.lane_id-1]
-                    rand_vel_x = float(randrange(5, 15))
+                    rand_vel_x = float(random.uniform(5, 7))
                     rand_lane_id = obstacle.lane_id
 
                     # new_obstacle = Obstacle(id=randrange(100,1000), x=rand_pos_x, y=rand_pos_y, vel_x=rand_vel_x, vel_y=0.0, lane_id=rand_lane_id, color=Constants.YELLOW)
