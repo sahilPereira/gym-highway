@@ -296,9 +296,6 @@ class DDPG(object):
         # print(action)
         B = obs0.shape[0]
         for b in range(B):
-            # print(obs0[b])
-            # print(action[b])
-            # print(reward[b])
             self.memory.append(obs0[b], action[b], reward[b], obs1[b], terminal1[b])
             if self.normalize_observations:
                 self.obs_rms.update(np.array([obs0[b]]))

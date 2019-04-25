@@ -46,6 +46,7 @@ def learn(network, env,
           eval_env=None,
           param_noise_adaption_interval=50,
           save_interval=100,
+          load_path=None,
           **network_kwargs):
 
     set_global_seeds(seed)
@@ -110,6 +111,12 @@ def learn(network, env,
     sess = U.get_session()
     # Prepare everything.
     agent.initialize(sess)
+
+    if load_path is not None:
+        load_path = "{}/{}/checkpoints/checkpoints-final".format(Config.results_dir, load_path)
+        load_path = osp.expanduser(load_path)
+        agent.load(load_path)
+    
     sess.graph.finalize()
 
     agent.reset()

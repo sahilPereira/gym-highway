@@ -57,6 +57,7 @@ ddpg_train_args = {'nb_epochs':None, # with default settings, perform 1M steps t
 				   'tau':0.01,
 				   'param_noise_adaption_interval':50,
 				   'save_interval':100,
+				   'load_path':None,
 				   # policy network_kwargs
 				   'num_layers':4, 
 				   'num_hidden':256, 

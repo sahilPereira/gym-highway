@@ -211,6 +211,7 @@ def custom_arg_parser():
     parser.add_argument('--save_video_interval', help='Save video every x steps (0 = disabled)', default=0, type=int)
     parser.add_argument('--save_video_length', help='Length of recorded video. Default: 200', default=200, type=int)
     parser.add_argument('--play', default=False, action='store_true')
+    parser.add_argument('--test', default=False, action='store_true')
     parser.add_argument('--extra_import', help='Extra module to import to access external environments', type=str, default=None)
     parser.add_argument('--desc', help='Description of experiment', type=str, default=None)
     return parser
@@ -251,12 +252,12 @@ def main(args):
     model, env = train(args, extra_args)
     env.close()
 
-    if args.save_model and rank == 0:
+    if args.save_model and rank == 0 and not args.test:
         save_path = "{}/checkpoints/checkpoints-final".format(results_dir)
         # save_path = osp.expanduser(args.save_path)
         model.save(save_path)
 
-    if args.play:
+    if args.test:
         logger.log("Running trained model")
         env = build_env(args)
         obs = env.reset()
@@ -268,7 +269,9 @@ def main(args):
             if state is not None:
                 actions, _, state, _ = model.step(obs,S=state, M=dones)
             else:
-                actions, _, _, _ = model.step(obs)
+                # actions, _, _, _ = model.step(obs)
+                # for DDPG
+                actions, _, _, _ = model.step(obs, apply_noise=False, compute_Q=True)
 
             obs, _, done, _ = env.step(actions)
             
