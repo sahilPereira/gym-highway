@@ -165,20 +165,12 @@ def learn(network, env,
     epoch_episode_steps = np.zeros(nenvs, dtype = int)
     # TODO: update epoch_actions to find std between actions over time
     epoch_actions = 0.0
-    epoch_qs = 0.0
+    epoch_qs = np.zeros(len(trainers), dtype = np.float32)
     epoch_episodes = 0
-
-    # training metrics
-    loss_metrics = {'q_loss':deque(maxlen=len(trainers)), 
-                    'p_loss':deque(maxlen=len(trainers)), 
-                    'mean_target_q':deque(maxlen=len(trainers)), 
-                    'mean_rew':deque(maxlen=len(trainers)), 
-                    'mean_target_q_next':deque(maxlen=len(trainers)), 
-                    'std_target_q':deque(maxlen=len(trainers))
-                    }
 
     episode_rewards_history = deque(maxlen=100)
     episode_steps_history = deque(maxlen=100)
+    episode_agent_rewards_history = [deque(maxlen=100) for _ in range(len(trainers))]
 
     print('Starting iterations...')
     for epoch in range(nb_epochs):
@@ -191,18 +183,15 @@ def learn(network, env,
                     agent.reset()
             for t_rollout in range(nb_rollout_steps):
                 actions_n = []
-                q_n = []
+                q_n = np.zeros(len(trainers), dtype = np.float32)
                 for i in range(nenvs):
                     # Predict next actions and q vals for all agents in current env
                     action_q_list = [(agent.step(obs, apply_noise=True, compute_Q=True)) for agent, obs in zip(trainers, obs_n[i])]
                     # store actions and q vals in respective lists
                     actions_n.append(np.array(action_q_list)[:,0])
-                    q_n.append(np.array(action_q_list)[:,1])
+                    # we care about the overall q value for each agent
+                    q_n += np.array(action_q_list)[:,1]
                 
-                # Predict next action.
-                # action, q, _, _ = agent.step(obs, apply_noise=True, compute_Q=True)
-                print("Actions_n: \n",actions_n)
-
                 # confirm actions_n is nenvs x num_agents x len(Action)
                 assert np.array(actions_n).shape == (nenvs, num_agents, nb_actions)
 
@@ -212,7 +201,7 @@ def learn(network, env,
                 # sum of rewards for each env
                 episode_reward += [r for r in rew_n]
                 episode_step += 1
-                epoch_qs += [q for q in q_n]
+                epoch_qs += [q / float(nenvs) for q in q_n]
 
                 # Book-keeping
                 for i, agent in enumerate(trainers):
@@ -221,15 +210,24 @@ def learn(network, env,
                         agent.store_transition(obs_n[b][i], actions_n[b][i], rew_n[b][i], new_obs_n[b][i], done_n[b][i], None)
                 obs_n = new_obs_n
 
+                # looping over nenvs
                 for d in range(len(done_n)):
                     if any(done_n[d]):
                         # Episode done.
                         epoch_episode_rewards += episode_reward[d]
+                        # keep track of individual agent reward history
+                        for i in range(num_agents):
+                            episode_agent_rewards_history[i].append(episode_reward[d][i])
+                        # track combined reward history of all agents
                         episode_rewards_history.append(sum(episode_reward[d]))
+                        # episode steps over all runs
                         epoch_episode_steps[d] += episode_step[d]
+                        # episode steps for last 100 runs
                         episode_steps_history.append(episode_step[d])
+                        # reset env specific list for next run
                         episode_reward[d] = np.zeros(len(trainers), dtype = np.float32)
                         episode_step[d] = 0
+                        # increment counters
                         epoch_episodes += 1
                         episodes += 1
                         if nenvs == 1:
@@ -240,34 +238,21 @@ def learn(network, env,
                 t += 1
 
             # Train.
-            epoch_actor_losses = []
-            epoch_critic_losses = []
-            epoch_adaptive_distances = []
+            epoch_actor_losses = [[] for _ in range(len(trainers))]
+            epoch_critic_losses = [[] for _ in range(len(trainers))]
+            epoch_adaptive_distances = [[] for _ in range(len(trainers))]
 
             for t_train in range(nb_train_steps):
-                for agent in trainers:
+                for i, agent in enumerate(trainers):
                     # Adapt param noise, if necessary.
                     if agent.memory.nb_entries >= batch_size and t_train % param_noise_adaption_interval == 0:
                         distance = agent.adapt_param_noise()
-                        # TODO: update this for multi agent
-                        epoch_adaptive_distances.append(distance)
+                        epoch_adaptive_distances[i].append(distance)
 
                     cl, al = agent.train()
-                    # TODO: update these for multi-agent
-                    epoch_critic_losses.append(cl)
-                    epoch_actor_losses.append(al)
+                    epoch_critic_losses[i].append(cl)
+                    epoch_actor_losses[i].append(al)
                     agent.update_target_net()
-
-                    # TODO: update to get loss metrics from DDPG logic
-                    # get all the loss metrics for this agent
-                    # lossvals = [np.mean(data, axis=0) if isinstance(data, list) else data for data in loss]
-                    # # add the metrics to respective queue
-                    # for (lossval, lossname) in zip(lossvals, agent.loss_names):
-                    #     loss_metrics[lossname].append(lossval)
-            
-            ########################################################################################
-            # DDPG CODE
-            ########################################################################################
 
             # Evaluate.
             eval_episode_rewards = []
@@ -304,11 +289,22 @@ def learn(network, env,
             stats = agent.get_stats()
             for k,v in stats.items():
                 combined_stats["{}st/ag{}_{}".format(Config.tensorboard_rootdir,i,k)] = v
-        combined_stats[Config.tensorboard_rootdir+'ro/return'] = epoch_episode_rewards / float(episodes)
+
+            # agent specific rollout metrics
+            combined_stats["{}ro/ag{}_return".format(Config.tensorboard_rootdir,i)] = epoch_episode_rewards[i] / float(episodes)
+            combined_stats["{}ro/ag{}_return_history".format(Config.tensorboard_rootdir,i)] = np.mean(episode_agent_rewards_history[i])
+            combined_stats["{}ro/ag{}_Q_mean".format(Config.tensorboard_rootdir,i)] = epoch_qs[i] / float(t)
+
+            # agent specific training metrics
+            combined_stats["{}tr/ag{}_loss_actor".format(Config.tensorboard_rootdir,i)] = np.mean(epoch_actor_losses[i])
+            combined_stats["{}tr/ag{}_loss_critic".format(Config.tensorboard_rootdir,i)] = np.mean(epoch_critic_losses[i])
+            combined_stats["{}tr/ag{}_param_noise_distance".format(Config.tensorboard_rootdir,i)] = np.mean(epoch_adaptive_distances[i])
+        
+        combined_stats[Config.tensorboard_rootdir+'ro/return'] = np.mean(epoch_episode_rewards) / float(episodes)
         combined_stats[Config.tensorboard_rootdir+'ro/return_history'] = np.mean(episode_rewards_history)
-        combined_stats[Config.tensorboard_rootdir+'ro/episode_steps'] = epoch_episode_steps / float(episodes)
-        combined_stats[Config.tensorboard_rootdir+'ro/actions_mean'] = epoch_actions / float(t)
-        combined_stats[Config.tensorboard_rootdir+'ro/Q_mean'] = epoch_qs / float(t)
+        combined_stats[Config.tensorboard_rootdir+'ro/episode_steps'] = np.mean(epoch_episode_steps) / float(episodes)
+        combined_stats[Config.tensorboard_rootdir+'ro/episode_steps_history'] = np.mean(episode_steps_history)
+        combined_stats[Config.tensorboard_rootdir+'ro/Q_mean'] = np.mean(epoch_qs) / float(t)
         combined_stats[Config.tensorboard_rootdir+'tr/loss_actor'] = np.mean(epoch_actor_losses)
         combined_stats[Config.tensorboard_rootdir+'tr/loss_critic'] = np.mean(epoch_critic_losses)
         combined_stats[Config.tensorboard_rootdir+'tr/param_noise_distance'] = np.mean(epoch_adaptive_distances)
@@ -316,6 +312,8 @@ def learn(network, env,
         combined_stats[Config.tensorboard_rootdir+'to/steps_per_second'] = float(t) / float(duration)
         combined_stats[Config.tensorboard_rootdir+'to/episodes'] = episodes
         combined_stats[Config.tensorboard_rootdir+'ro/episodes'] = epoch_episodes
+        combined_stats[Config.tensorboard_rootdir+'ro/std_return'] = np.std(epoch_episode_rewards)
+        # combined_stats[Config.tensorboard_rootdir+'ro/actions_mean'] = epoch_actions / float(t)
         # combined_stats[Config.tensorboard_rootdir+'rollout/actions_std'] = np.std(epoch_actions)
         # Evaluation statistics.
         if eval_env is not None:
