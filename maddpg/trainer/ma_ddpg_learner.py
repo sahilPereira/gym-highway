@@ -74,25 +74,36 @@ def get_perturbed_actor_updates(actor, perturbed_actor, param_noise_stddev):
 
 
 class MADDPG(object):
-    def __init__(self, actor, critic, memory, observation_shape, action_shape, param_noise=None, action_noise=None,
+    def __init__(self, name, actor, critic, memory, obs_space_n, act_space_n, agent_index, param_noise=None, action_noise=None,
         gamma=0.99, tau=0.001, normalize_returns=False, enable_popart=False, normalize_observations=True,
         batch_size=128, observation_range=(-5., 5.), action_range=(-1., 1.), return_range=(-np.inf, np.inf),
         critic_l2_reg=0., actor_lr=1e-4, critic_lr=1e-3, clip_norm=None, reward_scale=1.):
-        # Inputs.
-        self.obs0 = tf.placeholder(tf.float32, shape=(None,) + observation_shape, name='obs0')
-        self.obs1 = tf.placeholder(tf.float32, shape=(None,) + observation_shape, name='obs1')
+        self.name = name
+        self.num_agents = len(obs_space_n)
+        self.agent_index = agent_index
+
+        from gym import spaces
+        continuous_ctrl = not isinstance(act_space_n[0], spaces.Discrete)
+
+        # Multi-agent inputs
+        self.obs0 = []
+        self.obs1 = []
+        self.actions = []
+        for i in range(self.num_agents):
+            # each obs in obs0,obs1 contains info about ego agent and relative pos/vel of other agents
+            self.obs0.append(tf.placeholder(tf.float32, shape=[None] + obs_space_n[i].shape, name="obs0_"+str(i)))
+            self.obs1.append(tf.placeholder(tf.float32, shape=[None] + obs_space_n[i].shape, name="obs1_"+str(i)))
+
+            if continuous_ctrl:
+                self.actions.append(tf.placeholder(tf.float32, shape=[None] + act_space_n[i].shape, name="action"+str(i)))
+            else:
+                self.actions.append(make_pdtype(act_space_n[i]).sample_placeholder([None], name="action"+str(i)))
+        
+        # we only provide single agent inputs for these placeholders
         self.terminals1 = tf.placeholder(tf.float32, shape=(None, 1), name='terminals1')
         self.rewards = tf.placeholder(tf.float32, shape=(None, 1), name='rewards')
-        # self.actions = tf.placeholder(tf.float32, shape=(None,) + action_shape, name='actions')
-        
-        # create distribtuions
-        from gym import spaces
-        if isinstance(action_shape, spaces.Discrete):
-            act_pdtype_n = make_pdtype(action_shape)
-            self.actions = act_pdtype_n.sample_placeholder([None], name='actions')
-        else:
-            self.actions = tf.placeholder(tf.float32, shape=(None,) + action_shape.shape, name='actions')
 
+        # TODO: check if these placeholders are fine
         self.critic_target = tf.placeholder(tf.float32, shape=(None, 1), name='critic_target')
         self.param_noise_stddev = tf.placeholder(tf.float32, shape=(), name='param_noise_stddev')
 
@@ -119,17 +130,25 @@ class MADDPG(object):
         self.critic_l2_reg = critic_l2_reg
 
         # Observation normalization.
+        # TODO: update this obs_rms to account for multiple agents
+        # TODO: need to update the replay buffer storage function to account for multiple agents
         if self.normalize_observations:
             with tf.variable_scope('obs_rms'):
-                self.obs_rms = RunningMeanStd(shape=observation_shape)
+                assert np.array(obs_space_n).shape == [num_agents]+obs_space_n[agent_index].shape
+                self.obs_rms = RunningMeanStd(shape=np.array(obs_space_n).shape)
         else:
             self.obs_rms = None
+        
+        # TODO: This is a problem for multiple agents, since obs_rms is updated using single agent observations
+        # This means that we cannot get the normalized obs for all agents in a given object
+        # One solution is to normalize obs outside main graph and input this normalized obs in the placeholders
         normalized_obs0 = tf.clip_by_value(normalize(self.obs0, self.obs_rms),
             self.observation_range[0], self.observation_range[1])
         normalized_obs1 = tf.clip_by_value(normalize(self.obs1, self.obs_rms),
             self.observation_range[0], self.observation_range[1])
 
         # Return normalization.
+        # TODO: update this to handle multiple agents if required
         if self.normalize_returns:
             with tf.variable_scope('ret_rms'):
                 self.ret_rms = RunningMeanStd()
@@ -145,17 +164,30 @@ class MADDPG(object):
         self.target_critic = target_critic
 
         # Create networks and core TF parts that are shared across setup parts.
-        self.actor_tf = actor(normalized_obs0)
+        # Each agents gets its own observation
+        self.actor_tf = actor(normalized_obs0[self.agent_index])
+        self.target_actor_tf = target_actor(normalized_obs1[self.agent_index])
+
+        # Critic gets all observations
         self.normalized_critic_tf = critic(normalized_obs0, self.actions)
         self.critic_tf = denormalize(tf.clip_by_value(self.normalized_critic_tf, self.return_range[0], self.return_range[1]), self.ret_rms)
-        self.normalized_critic_with_actor_tf = critic(normalized_obs0, self.actor_tf, reuse=True)
+
+        # need to provide critic() with all actions
+        act_input_n = self.actions + [] # copy actions
+        act_input_n[self.agent_index] = self.actor_tf # update current agent action using its actor
+        self.normalized_critic_with_actor_tf = critic(normalized_obs0, act_input_n, reuse=True)
         self.critic_with_actor_tf = denormalize(tf.clip_by_value(self.normalized_critic_with_actor_tf, self.return_range[0], self.return_range[1]), self.ret_rms)
-        Q_obs1 = denormalize(target_critic(normalized_obs1, target_actor(normalized_obs1)), self.ret_rms)
+
+        # we need to use actions for all agents
+        t_act_input_n = self.actions + [] # copy actions
+        t_act_input_n[self.agent_index] = self.target_actor_tf # update current agent action using its target actor
+        Q_obs1 = denormalize(target_critic(normalized_obs1, t_act_input_n), self.ret_rms)
         self.target_Q = self.rewards + (1. - self.terminals1) * gamma * Q_obs1
 
         # Set up parts.
         if self.param_noise is not None:
-            self.setup_param_noise(normalized_obs0)
+            # param noise is added to actor; hence obs for current agent is required
+            self.setup_param_noise(normalized_obs0[self.agent_index])
         self.setup_actor_optimizer()
         self.setup_critic_optimizer()
         if self.normalize_returns and self.enable_popart:
@@ -275,12 +307,14 @@ class MADDPG(object):
         self.stats_ops = ops
         self.stats_names = names
 
+    # TODO: need to provide all observations to compute q
     def step(self, obs, apply_noise=True, compute_Q=True):
         if self.param_noise is not None and apply_noise:
             actor_tf = self.perturbed_actor_tf
         else:
             actor_tf = self.actor_tf
-        feed_dict = {self.obs0: U.adjust_shape(self.obs0, [obs])}
+        # feed_dict = {self.obs0: U.adjust_shape(self.obs0, [obs])}
+        feed_dict={ph: data for ph, data in zip(self.obs0, obs)}
         if compute_Q:
             action, q = self.sess.run([actor_tf, self.critic_with_actor_tf], feed_dict=feed_dict)
         else:
@@ -296,6 +330,7 @@ class MADDPG(object):
 
         return action, q, None, None
 
+    # TODO: need to update this for obs_rms
     def store_transition(self, obs0, action, reward, obs1, terminal1):
         reward *= self.reward_scale
         # print(action)
@@ -305,16 +340,41 @@ class MADDPG(object):
             if self.normalize_observations:
                 self.obs_rms.update(np.array([obs0[b]]))
 
-    def train(self):
-        # Get a batch.
-        batch = self.memory.sample(batch_size=self.batch_size)
+    def train(self, agents):
+        # generate indices to access batches from all agents
+        replay_sample_index = self.memory.generate_index(self.batch_size)
 
+        # collect replay sample from all agents
+        obs0_n = []
+        obs1_n = []
+        rewards_n = []
+        act_n = []
+        terminals1_n = []
+        for i in range(self.num_agents):
+            # Get a batch.
+            batch = agents[i].memory.sample(batch_size=self.batch_size, index=replay_sample_index)
+            obs0_n.append(batch['obs0'])
+            obs1_n.append(batch['obs1'])
+            rewards_n.append(batch['rewards'])
+            act_n.append(batch['actions'])
+            terminals1_n.append(batch['terminals1'])
+        batch = self.memory.sample(batch_size=self.batch_size, index=replay_sample_index)
+
+        # fill placeholders in obs1 with corresponding obs from each agent's replay buffer
+        # self.obs1 and obs1_n are lists of size num_agents
+        feed_dict={ph: data for ph, data in zip(self.obs1, obs1_n)}
+        feed_dict.update({self.rewards: batch['rewards']})
+        feed_dict.update({self.terminals1: batch['terminals1'].astype('float32')})
+        # NOTE: keep updating these functions...
+        # NEXT STEPS: modify feed_dict by placing the the obs in correctly
         if self.normalize_returns and self.enable_popart:
-            old_mean, old_std, target_Q = self.sess.run([self.ret_rms.mean, self.ret_rms.std, self.target_Q], feed_dict={
-                self.obs1: batch['obs1'],
-                self.rewards: batch['rewards'],
-                self.terminals1: batch['terminals1'].astype('float32'),
-            })
+            old_mean, old_std, target_Q = self.sess.run([self.ret_rms.mean, self.ret_rms.std, self.target_Q], feed_dict=feed_dict)
+            # old_mean, old_std, target_Q = self.sess.run([self.ret_rms.mean, self.ret_rms.std, self.target_Q], feed_dict={
+            #     self.obs1: batch['obs1'],
+            #     self.rewards: batch['rewards'],
+            #     self.terminals1: batch['terminals1'].astype('float32'),
+            # })
+
             self.ret_rms.update(target_Q.flatten())
             self.sess.run(self.renormalize_Q_outputs_op, feed_dict={
                 self.old_std : np.array([old_std]),
@@ -331,19 +391,28 @@ class MADDPG(object):
             # print(target_Q_new, target_Q, new_mean, new_std)
             # assert (np.abs(target_Q - target_Q_new) < 1e-3).all()
         else:
-            target_Q = self.sess.run(self.target_Q, feed_dict={
-                self.obs1: batch['obs1'],
-                self.rewards: batch['rewards'],
-                self.terminals1: batch['terminals1'].astype('float32'),
-            })
+            target_Q = self.sess.run(self.target_Q, feed_dict=feed_dict)
+            # target_Q = self.sess.run(self.target_Q, feed_dict={
+            #     self.obs1: batch['obs1'],
+            #     self.rewards: batch['rewards'],
+            #     self.terminals1: batch['terminals1'].astype('float32'),
+            # })
 
         # Get all gradients and perform a synced update.
         ops = [self.actor_grads, self.actor_loss, self.critic_grads, self.critic_loss]
-        actor_grads, actor_loss, critic_grads, critic_loss = self.sess.run(ops, feed_dict={
-            self.obs0: batch['obs0'],
-            self.actions: batch['actions'],
-            self.critic_target: target_Q,
-        })
+
+        # generate feed_dict for multiple observations and actions
+        feed_dict={ph: data for ph, data in zip(self.obs0, obs0_n)}
+        actions_feed_dict={ph: data for ph, data in zip(self.actions, act_n)}
+        feed_dict.update(actions_feed_dict)
+        feed_dict.update({self.critic_target: target_Q})
+
+        actor_grads, actor_loss, critic_grads, critic_loss = self.sess.run(ops, feed_dict=feed_dict)
+        # actor_grads, actor_loss, critic_grads, critic_loss = self.sess.run(ops, feed_dict={
+        #     self.obs0: batch['obs0'],
+        #     self.actions: batch['actions'],
+        #     self.critic_target: target_Q,
+        # })
         self.actor_optimizer.update(actor_grads, stepsize=self.actor_lr)
         self.critic_optimizer.update(critic_grads, stepsize=self.critic_lr)
 
@@ -364,15 +433,24 @@ class MADDPG(object):
     def update_target_net(self):
         self.sess.run(self.target_soft_updates)
 
-    def get_stats(self):
+    def get_stats(self, agents):
         if self.stats_sample is None:
+            replay_sample_index = self.memory.generate_index(self.batch_size)
+            # collect replay sample from all agents
+            obs0_n, act_n = [], []
+            for i in range(self.num_agents):
+                batch = agents[i].memory.sample(batch_size=self.batch_size, index=replay_sample_index)
+                obs0_n.append(batch['obs0'])
+                act_n.append(batch['actions'])
+            # generate feed_dict for multiple observations and actions
+            feed_dict={ph: data for ph, data in zip(self.obs0, obs0_n)}
+            actions_dict={ph: data for ph, data in zip(self.actions, act_n)}
+            feed_dict.update(actions_dict)
+
             # Get a sample and keep that fixed for all further computations.
             # This allows us to estimate the change in value for the same set of inputs.
-            self.stats_sample = self.memory.sample(batch_size=self.batch_size)
-        values = self.sess.run(self.stats_ops, feed_dict={
-            self.obs0: self.stats_sample['obs0'],
-            self.actions: self.stats_sample['actions'],
-        })
+            self.stats_sample = feed_dict
+        values = self.sess.run(self.stats_ops, feed_dict=self.stats_sample)
 
         names = self.stats_names[:]
         assert len(names) == len(values)
@@ -383,7 +461,7 @@ class MADDPG(object):
 
         return stats
 
-    def adapt_param_noise(self):
+    def adapt_param_noise(self, agents):
         try:
             from mpi4py import MPI
         except ImportError:
@@ -393,14 +471,22 @@ class MADDPG(object):
             return 0.
 
         # Perturb a separate copy of the policy to adjust the scale for the next "real" perturbation.
-        batch = self.memory.sample(batch_size=self.batch_size)
+        replay_sample_index = self.memory.generate_index(self.batch_size)
+        obs0_n = []
+        for i in range(self.num_agents):
+            batch = agents[i].memory.sample(batch_size=self.batch_size, index=replay_sample_index)
+            obs0_n.append(batch['obs0'])
+        feed_dict={ph: data for ph, data in zip(self.obs0, obs0_n)}
+        feed_dict.update({self.param_noise_stddev: self.param_noise.current_stddev})
+
         self.sess.run(self.perturb_adaptive_policy_ops, feed_dict={
             self.param_noise_stddev: self.param_noise.current_stddev,
         })
-        distance = self.sess.run(self.adaptive_policy_distance, feed_dict={
-            self.obs0: batch['obs0'],
-            self.param_noise_stddev: self.param_noise.current_stddev,
-        })
+        distance = self.sess.run(self.adaptive_policy_distance, feed_dict=feed_dict)
+        # distance = self.sess.run(self.adaptive_policy_distance, feed_dict={
+        #     self.obs0: batch['obs0'],
+        #     self.param_noise_stddev: self.param_noise.current_stddev,
+        # })
 
         if MPI is not None:
             mean_distance = MPI.COMM_WORLD.allreduce(distance, op=MPI.SUM) / MPI.COMM_WORLD.Get_size()

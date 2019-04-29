@@ -10,8 +10,10 @@ from collections import deque
 import pickle
 
 from maddpg.trainer.ma_ddpg_learner import MADDPG
-from baselines.ddpg.models import Actor, Critic
-from baselines.ddpg.memory import Memory
+# from baselines.ddpg.models import Actor, Critic
+# from baselines.ddpg.memory import Memory
+from maddpg.trainer.ma_models import Actor, Critic
+from maddpg.trainer.ma_memory import Memory
 from baselines.ddpg.noise import AdaptiveParamNoiseSpec, NormalActionNoise, OrnsteinUhlenbeckActionNoise
 from baselines.common import set_global_seeds
 import baselines.common.tf_util as U
@@ -114,7 +116,7 @@ def learn(network, env,
 
         # TODO: need to update the placeholders in MADDPG based off of ddpg_learner
         # replay buffer, actor and critic are defined for each agent in trainers
-        agent = MADDPG(actor, critic, memory, env.observation_space, env.action_space,
+        agent = MADDPG("agent_%d" % i, actor, critic, memory, env.observation_space, env.action_space, i,
             gamma=gamma, tau=tau, normalize_returns=normalize_returns, normalize_observations=normalize_observations,
             batch_size=batch_size, action_noise=action_noise, param_noise=param_noise, critic_l2_reg=critic_l2_reg,
             actor_lr=actor_lr, critic_lr=critic_lr, enable_popart=popart, clip_norm=clip_norm,
@@ -185,8 +187,11 @@ def learn(network, env,
                 actions_n = []
                 q_n = np.zeros(len(trainers), dtype = np.float32)
                 for i in range(nenvs):
+                    # create n copies of full obs where n = num agents; memory is not an issue for this simulation
+                    rep_obs = np.stack([obs_n[i] for _ in range(len(trainers))])
                     # Predict next actions and q vals for all agents in current env
-                    action_q_list = [(agent.step(obs, apply_noise=True, compute_Q=True)) for agent, obs in zip(trainers, obs_n[i])]
+                    # call step() with each agent and full observation; full observation required for q value
+                    action_q_list = [(agent.step(obs, apply_noise=True, compute_Q=True)) for agent, obs in zip(trainers, rep_obs)]
                     # store actions and q vals in respective lists
                     actions_n.append(np.array(action_q_list)[:,0])
                     # we care about the overall q value for each agent
