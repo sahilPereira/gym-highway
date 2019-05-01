@@ -19,6 +19,8 @@ from baselines.common import set_global_seeds
 import baselines.common.tf_util as U
 from models import config as Config
 from gym import spaces
+import tensorflow as tf
+from baselines.common.mpi_running_mean_std import RunningMeanStd
 
 from baselines import logger
 import numpy as np
@@ -77,6 +79,8 @@ def learn(network, env,
           save_interval=100,
           load_path=None,
           num_adversaries=0,
+          adv_policy='maddpg',
+          good_policy='maddpg',
           **network_kwargs):
 
     set_global_seeds(seed)
@@ -101,6 +105,10 @@ def learn(network, env,
     print('Observation shapes {}'.format(obs_shape_n))
 
     sess = U.get_session()
+    # create one obs_rms used by all agents
+    obs_shape = (num_agents,)+env.observation_space[0].shape
+    with tf.variable_scope('obs_rms'):
+        obs_rms = RunningMeanStd(shape=obs_shape)
     trainers = []
     for i in range(num_agents):
         # get action shape for an agent
@@ -108,27 +116,29 @@ def learn(network, env,
 
         # TODO: will have to modify the critic and actor to work with batches for multiple agents
         memory = Memory(limit=int(1e6), action_shape=action_shape, observation_shape=env.observation_space[i].shape)
-        critic = Critic(network=network, **network_kwargs)
-        actor = Actor(nb_actions, network=network, **network_kwargs)
+        critic = Critic(name="critic_%d" % i, network=network, **network_kwargs)
+        actor = Actor(nb_actions, name="actor_%d" % i, network=network, **network_kwargs)
 
         # get action and parameter noise type
         action_noise, param_noise = get_noise(noise_type, nb_actions)
 
         # TODO: need to update the placeholders in MADDPG based off of ddpg_learner
         # replay buffer, actor and critic are defined for each agent in trainers
-        agent = MADDPG("agent_%d" % i, actor, critic, memory, env.observation_space, env.action_space, i,
+        agent = MADDPG("agent_%d" % i, actor, critic, memory, env.observation_space, env.action_space, i, obs_rms,
             gamma=gamma, tau=tau, normalize_returns=normalize_returns, normalize_observations=normalize_observations,
             batch_size=batch_size, action_noise=action_noise, param_noise=param_noise, critic_l2_reg=critic_l2_reg,
             actor_lr=actor_lr, critic_lr=critic_lr, enable_popart=popart, clip_norm=clip_norm,
             reward_scale=reward_scale)
         
         # Prepare agent
-        agent.agent_initialize(sess)
+        agent.initialize(sess)
         trainers.append(agent)
     
     # TODO: test if this actually works
     # should only call on one agent to initialize all global vars
-    trainers[0].initialize(sess)
+    sess.run(tf.global_variables_initializer())
+    for agent in trainers:
+        agent.agent_initialize(sess)
 
     # max_action = env.action_space.high
     max_action = 1
@@ -190,15 +200,21 @@ def learn(network, env,
                     # create n copies of full obs where n = num agents; memory is not an issue for this simulation
                     rep_obs = np.stack([obs_n[i] for _ in range(len(trainers))])
                     # Predict next actions and q vals for all agents in current env
-                    # call step() with each agent and full observation; full observation required for q value
-                    action_q_list = [(agent.step(obs, apply_noise=True, compute_Q=True)) for agent, obs in zip(trainers, rep_obs)]
+                    # call step() with each agent and full observation; only get action "[0]" from this call
+                    action_q_list = [agent.step(obs, apply_noise=True, compute_Q=False)[0] for agent, obs in zip(trainers, rep_obs)]
                     # store actions and q vals in respective lists
-                    actions_n.append(np.array(action_q_list)[:,0])
+                    actions_n.append(action_q_list)
                     # we care about the overall q value for each agent
-                    q_n += np.array(action_q_list)[:,1]
+                    # print("action_q_list: ", action_q_list)
+                    # print("q_n: ", np.array(action_q_list)[:,1])
+                    # q_n += np.array(action_q_list)[:,1]
                 
                 # confirm actions_n is nenvs x num_agents x len(Action)
-                assert np.array(actions_n).shape == (nenvs, num_agents, nb_actions)
+                # print("actions_n: ", actions_n)
+                # print("actions_n: ", actions_n[0][1])
+                # print((len(actions_n),len(actions_n[0]),len(actions_n[0][0])))
+                # print((nenvs, num_agents, nb_actions))
+                assert (len(actions_n),len(actions_n[0]),len(actions_n[0][0])) == (nenvs, num_agents, nb_actions)
 
                 # environment step
                 new_obs_n, rew_n, done_n, info_n = env.step(actions_n)
@@ -206,13 +222,14 @@ def learn(network, env,
                 # sum of rewards for each env
                 episode_reward += [r for r in rew_n]
                 episode_step += 1
-                epoch_qs += [q / float(nenvs) for q in q_n]
+                # epoch_qs += [q / float(nenvs) for q in q_n]
 
                 # Book-keeping
                 for i, agent in enumerate(trainers):
-                    for b in range(nenvs):
-                        # save experience from all envs for each agent
-                        agent.store_transition(obs_n[b][i], actions_n[b][i], rew_n[b][i], new_obs_n[b][i], done_n[b][i], None)
+                    # for b in range(nenvs):
+                    #     # save experience from all envs for each agent
+                    #     agent.store_transition(obs_n[b][i], actions_n[b][i], rew_n[b][i], new_obs_n[b][i], done_n[b][i], None)
+                    agent.store_transition(obs_n, actions_n, rew_n, new_obs_n, done_n)
                 obs_n = new_obs_n
 
                 # looping over nenvs
@@ -251,10 +268,10 @@ def learn(network, env,
                 for i, agent in enumerate(trainers):
                     # Adapt param noise, if necessary.
                     if agent.memory.nb_entries >= batch_size and t_train % param_noise_adaption_interval == 0:
-                        distance = agent.adapt_param_noise()
+                        distance = agent.adapt_param_noise(trainers)
                         epoch_adaptive_distances[i].append(distance)
 
-                    cl, al = agent.train()
+                    cl, al = agent.train(trainers)
                     epoch_critic_losses[i].append(cl)
                     epoch_actor_losses[i].append(al)
                     agent.update_target_net()
@@ -291,14 +308,14 @@ def learn(network, env,
         combined_stats = {}
         # get stats for all agents
         for i, agent in enumerate(trainers):
-            stats = agent.get_stats()
+            stats = agent.get_stats(trainers)
             for k,v in stats.items():
                 combined_stats["{}st/ag{}_{}".format(Config.tensorboard_rootdir,i,k)] = v
 
             # agent specific rollout metrics
             combined_stats["{}ro/ag{}_return".format(Config.tensorboard_rootdir,i)] = epoch_episode_rewards[i] / float(episodes)
             combined_stats["{}ro/ag{}_return_history".format(Config.tensorboard_rootdir,i)] = np.mean(episode_agent_rewards_history[i])
-            combined_stats["{}ro/ag{}_Q_mean".format(Config.tensorboard_rootdir,i)] = epoch_qs[i] / float(t)
+            # combined_stats["{}ro/ag{}_Q_mean".format(Config.tensorboard_rootdir,i)] = epoch_qs[i] / float(t)
 
             # agent specific training metrics
             combined_stats["{}tr/ag{}_loss_actor".format(Config.tensorboard_rootdir,i)] = np.mean(epoch_actor_losses[i])
@@ -309,7 +326,7 @@ def learn(network, env,
         combined_stats[Config.tensorboard_rootdir+'ro/return_history'] = np.mean(episode_rewards_history)
         combined_stats[Config.tensorboard_rootdir+'ro/episode_steps'] = np.mean(epoch_episode_steps) / float(episodes)
         combined_stats[Config.tensorboard_rootdir+'ro/episode_steps_history'] = np.mean(episode_steps_history)
-        combined_stats[Config.tensorboard_rootdir+'ro/Q_mean'] = np.mean(epoch_qs) / float(t)
+        # combined_stats[Config.tensorboard_rootdir+'ro/Q_mean'] = np.mean(epoch_qs) / float(t)
         combined_stats[Config.tensorboard_rootdir+'tr/loss_actor'] = np.mean(epoch_actor_losses)
         combined_stats[Config.tensorboard_rootdir+'tr/loss_critic'] = np.mean(epoch_critic_losses)
         combined_stats[Config.tensorboard_rootdir+'tr/param_noise_distance'] = np.mean(epoch_adaptive_distances)

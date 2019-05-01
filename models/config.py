@@ -80,7 +80,7 @@ maddpg_train_args = {'nb_epochs':None, # with default settings, perform 1M steps
 				   'clip_norm':None,
 				   'nb_train_steps':6, # per epoch cycle and MPI worker, (train 6 times using a batch size of 240)
 				   'nb_eval_steps':100,
-				   'batch_size':10, # per MPI worker
+				   'batch_size':1440, # per MPI worker
 				   'tau':0.01,
 				   'param_noise_adaption_interval':50,
 				   'adv_policy':'maddpg',
@@ -88,10 +88,9 @@ maddpg_train_args = {'nb_epochs':None, # with default settings, perform 1M steps
 				   'load_path':None,
 				   'save_interval':100,
 				   'num_adversaries':0,
-				   'rb_size':1e6,
 				   # policy network_kwargs
 				   'num_layers':4, 
-				   'num_hidden':[256, 512, 512, 256], 
+				   'num_hidden':256, 
 				   'activation':'relu',
 				   'layer_norm':False
 				   }

@@ -51,7 +51,7 @@ class Memory(object):
 
     def sample(self, batch_size, index=None):
         # Draw such that we always have a proceeding element.
-        batch_idxs = index if index else self.generate_index(batch_size)
+        batch_idxs = index if index is not None else self.generate_index(batch_size)
 
         obs0_batch = self.observations0.get_batch(batch_idxs)
         obs1_batch = self.observations1.get_batch(batch_idxs)

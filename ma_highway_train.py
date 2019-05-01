@@ -20,7 +20,8 @@ from baselines.common.cmd_util import (common_arg_parser, make_env,
                                        make_vec_env, parse_unknown_args)
 from baselines.common.tf_util import get_session
 from maddpg.trainer.maddpg import MADDPGAgentTrainer
-from maddpg.trainer.maddpg_learner import learn
+# from maddpg.trainer.maddpg_learner import learn
+from maddpg.trainer.ma_ddpg import learn
 from models.utils import (activation_str_function, create_results_dir,
                           parse_cmdline_kwargs, save_configs)
 
@@ -43,6 +44,7 @@ def parse_args():
     parser.add_argument('--env', help='environment ID', type=str, default=Config.ma_c_env_id)
     parser.add_argument('--seed', help='RNG seed', type=int, default=None)
     parser.add_argument('--alg', help='Algorithm', type=str, default='maddpg')
+    parser.add_argument('--network', help='network type (mlp, cnn, lstm, cnn_lstm, conv_only)', default=None)
     parser.add_argument('--num_timesteps', type=float, default=1e6)
     parser.add_argument('--num_env', help='Number of environment copies being run in parallel', default=Config.num_workers, type=int)
     parser.add_argument("--num_agents", type=int, default=1, help="number of total agents")
@@ -96,11 +98,11 @@ def train(args, extra_args):
 
     env = build_env(args)
 
-    # if args.network:
-    #     alg_kwargs['network'] = args.network
-    # else:
-    #     if alg_kwargs.get('network') is None:
-    #         alg_kwargs['network'] = get_default_network(env_type)
+    if args.network:
+        alg_kwargs['network'] = args.network
+    else:
+        if alg_kwargs.get('network') is None:
+            alg_kwargs['network'] = get_default_network(env_type)
 
     print('Training {} on {}:{} with arguments \n{}'.format(args.alg, env_type, env_id, alg_kwargs))
 
@@ -155,6 +157,12 @@ def get_env_type(env_id):
         assert env_type is not None, 'env_id {} is not recognized in env types {}'.format(env_id, _game_envs.keys())
 
     return env_type, env_id
+
+def get_default_network(env_type):
+    if env_type in {'atari', 'retro'}:
+        return 'cnn'
+    else:
+        return 'mlp'
 
 def learn_old(env, 
           arglist,
