@@ -23,11 +23,12 @@ class HighwayEnvContinuous(HighwayEnv):
         num_vehicles = len(self.env.cars_list) + 3 # max 3 obstacles on road at any given time
         control_low = np.array([-5.0, -30.0])
         control_high = np.array([5.0, 30.0])
-        
-        pos_low = np.array([-60.0, -8.0]*num_vehicles).flatten()
-        vel_low = np.array([-20.0, -20.0]*num_vehicles).flatten()
 
-        pos_high = np.array([60.0, 8.0]*num_vehicles).flatten()
+        # first bound is for raw min position
+        pos_low = np.array([0.0, 0.0]+[-60.0, -8.0]*(num_vehicles-1)).flatten()
+        vel_low = np.array([-20.0, -20.0]*num_vehicles).flatten()
+        # first bound is for raw max position
+        pos_high = np.array([1200.0, 8.0]+[60.0, 8.0]*(num_vehicles-1)).flatten()
         vel_high = np.array([20.0, 20.0]*num_vehicles).flatten()
         
         low = np.concatenate((control_low, pos_low, vel_low))

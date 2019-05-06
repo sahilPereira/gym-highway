@@ -37,10 +37,11 @@ class MultiAgentEnv(gym.Env):
         control_low = np.array([-5.0, -30.0])
         control_high = np.array([5.0, 30.0])
 
-        pos_low = np.array([-60.0, -8.0]*num_entities).flatten()
+        # first bound is for raw min position
+        pos_low = np.array([0.0, 0.0]+[-60.0, -8.0]*(num_entities-1)).flatten()
         vel_low = np.array([-20.0, -20.0]*num_entities).flatten()
-
-        pos_high = np.array([60.0, 8.0]*num_entities).flatten()
+        # first bound is for raw max position
+        pos_high = np.array([1200.0, 8.0]+[60.0, 8.0]*(num_entities-1)).flatten()
         vel_high = np.array([20.0, 20.0]*num_entities).flatten()
         
         self.low = np.concatenate((control_low, pos_low, vel_low))

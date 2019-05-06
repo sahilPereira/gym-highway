@@ -34,11 +34,12 @@ class HighwayEnv(gym.Env, utils.EzPickle):
 
         control_low = np.array([-5.0, -30.0])
         control_high = np.array([5.0, 30.0])
-        
-        pos_low = np.array([-60.0, -8.0]*num_vehicles).flatten()
-        vel_low = np.array([-20.0, -20.0]*num_vehicles).flatten()
 
-        pos_high = np.array([60.0, 8.0]*num_vehicles).flatten()
+        # first bound is for raw min position
+        pos_low = np.array([0.0, 0.0]+[-60.0, -8.0]*(num_vehicles-1)).flatten()
+        vel_low = np.array([-20.0, -20.0]*num_vehicles).flatten()
+        # first bound is for raw max position
+        pos_high = np.array([1200.0, 8.0]+[60.0, 8.0]*(num_vehicles-1)).flatten()
         vel_high = np.array([20.0, 20.0]*num_vehicles).flatten()
         
         low = np.concatenate((control_low, pos_low, vel_low))
@@ -51,9 +52,9 @@ class HighwayEnv(gym.Env, utils.EzPickle):
 
     def _configure_environment(self, manual, inf_obs, save, render, real_time):
         # initial positions of obstacles and agents
-        obstacle_1 = {'id':1, 'x':-20, 'y':Constants.LANE_1_C, 'vel_x':13.0, 'lane_id':1, 'color':Constants.YELLOW}
-        obstacle_2 = {'id':2, 'x':-25, 'y':Constants.LANE_2_C, 'vel_x':12.0, 'lane_id':2, 'color':Constants.YELLOW}
-        obstacle_3 = {'id':3, 'x':-40, 'y':Constants.LANE_3_C, 'vel_x':10.0, 'lane_id':3, 'color':Constants.YELLOW}
+        obstacle_1 = {'id':1, 'x':-20, 'y':Constants.LANE_1_C, 'vel_x':7.0, 'lane_id':1, 'color':Constants.YELLOW}
+        obstacle_2 = {'id':2, 'x':-25, 'y':Constants.LANE_2_C, 'vel_x':5.0, 'lane_id':2, 'color':Constants.YELLOW}
+        obstacle_3 = {'id':3, 'x':-40, 'y':Constants.LANE_3_C, 'vel_x':6.0, 'lane_id':3, 'color':Constants.YELLOW}
         obstacle_list = [obstacle_1, obstacle_2, obstacle_3]
 
         car_1 = {'id':0, 'x':20, 'y':Constants.LANE_2_C, 'vel_x':0.0, 'vel_y':0.0, 'lane_id':2}
