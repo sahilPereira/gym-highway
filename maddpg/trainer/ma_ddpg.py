@@ -85,7 +85,9 @@ def learn(network, env,
 
     set_global_seeds(seed)
 
-    continuous_ctrl = not isinstance(env.action_space, spaces.Discrete)
+    continuous_ctrl = not isinstance(env.action_space[0], spaces.Discrete)
+    assert continuous_ctrl
+    
     nb_actions = env.action_space[0].shape[-1] if continuous_ctrl else env.action_space[0].n
     
     if total_timesteps is not None:
@@ -122,6 +124,9 @@ def learn(network, env,
         # get action and parameter noise type
         action_noise, param_noise = get_noise(noise_type, nb_actions)
 
+        # TODO: remove after testing
+        assert param_noise is not None
+
         # TODO: need to update the placeholders in MADDPG based off of ddpg_learner
         # replay buffer, actor and critic are defined for each agent in trainers
         agent = MADDPG("agent_%d" % i, actor, critic, memory, env.observation_space, env.action_space, i, obs_rms,
@@ -135,7 +140,7 @@ def learn(network, env,
         trainers.append(agent)
     
     # TODO: test if this actually works
-    # should only call on one agent to initialize all global vars
+    # Test by running the trained models (num_agents>=2)
     sess.run(tf.global_variables_initializer())
     for agent in trainers:
         agent.agent_initialize(sess)

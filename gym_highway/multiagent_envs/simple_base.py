@@ -100,25 +100,31 @@ class Scenario(BaseScenario):
 
             lane_obs_near = [None for _ in range(Constants.NUM_LANES)]
             # get closest obstacle
+
+            # TEST: make sure we have sufficient obstacles
+            assert len(world.scripted_agents) >= 3
             for obj in world.scripted_agents:
                 if obj is agent: continue
                 
-                if lane_obs_near[obj.lane_id-1] is not None:
+                lane_idx = obj.lane_id-1
+                if lane_obs_near[lane_idx] is not None:
                     # compute absolute difference in position between ref and obs
-                    pos_diff = abs(agent.raw_position.x - lane_obs_near[obj.lane_id-1].raw_position.x)
+                    pos_diff = abs(agent.raw_position.x - lane_obs_near[lane_idx].raw_position.x)
                     new_pos_diff = abs(agent.raw_position.x - obj.raw_position.x)
                     # if current obs is closer to ref vehicle
                     if new_pos_diff < pos_diff:
-                        lane_obs_near[obj.lane_id-1] = obj
+                        lane_obs_near[lane_idx] = obj
                 else:
                     # if no object in this lane
-                    lane_obs_near[obj.lane_id-1] = obj
+                    lane_obs_near[lane_idx] = obj
 
             # store closest obstacles
             for lane in range(Constants.NUM_LANES):
                 obj = lane_obs_near[lane]
                 if obj is agent:
                     raise Exception("Obstacle object should not equal reference agent")
+                if obj is None:
+                    raise Exception("Obj is None, lane_obs_near: {}".format(lane_obs_near))
                 # find place for agent info in the array
                 placement_idx = obj.id
                 if obj.id > agent.id: placement_idx -= 1

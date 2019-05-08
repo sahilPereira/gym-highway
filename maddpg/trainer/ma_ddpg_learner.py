@@ -84,6 +84,8 @@ class MADDPG(object):
 
         from gym import spaces
         continuous_ctrl = not isinstance(act_space_n[0], spaces.Discrete)
+        # TODO: remove after testing
+        assert continuous_ctrl
 
         # Multi-agent inputs
         # self.obs0 = []
