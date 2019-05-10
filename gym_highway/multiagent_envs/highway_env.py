@@ -5,6 +5,7 @@ from gym.envs.registration import EnvSpec
 
 from gym_highway.multiagent_envs import actions
 from gym_highway.multiagent_envs.simple_base import Scenario
+from gym_highway.multiagent_envs.scenario_sorted import ScenarioSorted
 
 
 # environment for all agents in the multiagent world
@@ -17,7 +18,9 @@ class MultiAgentEnv(gym.Env):
                  observation_callback=None, info_callback=None,
                  done_callback=None, shared_reward=False):
 
-        scenario = Scenario()
+        # scenario = Scenario()
+        scenario = ScenarioSorted()
+        
         # create world
         self.world = scenario.make_world(num_agents, world_config)
         self.agents = self.world.agents
