@@ -26,7 +26,7 @@ from baselines.common.vec_env.vec_normalize import VecNormalize
 
 import tensorflow as tf
 import models.config as Config
-from models.utils import activation_str_function
+from models.utils import activation_str_function, create_results_dir, id_generator
 
 try:
     from mpi4py import MPI
@@ -179,23 +179,6 @@ def parse_cmdline_kwargs(args):
 
     return {k: parse(v) for k,v in parse_unknown_args(args).items()}
 
-def id_generator(size=10, chars=string.ascii_lowercase + string.digits):
-    return ''.join(random.choice(chars) for _ in range(size))
-
-def create_results_dir(args):
-    current_time = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M")
-    new_run_dir = "{}_{}_{}_{}".format(args.alg, args.env, current_time, id_generator())
-
-    results_dir = "{}/{}".format(Config.results_dir, new_run_dir)
-    results_dir = osp.expanduser(results_dir)
-    if not os.path.exists(results_dir):
-        try:
-            os.makedirs(results_dir, exist_ok=True)
-        except OSError as e:
-            if e.errno != errno.EEXIST:
-                raise
-    return results_dir
-
 def save_configs(results_dir, args, extra_args):
     config_save_path = "{}/configs.txt".format(results_dir)
 
@@ -215,7 +198,7 @@ def arg_parser():
 
 def custom_arg_parser():
     parser = arg_parser()
-    parser.add_argument('--env', help='environment ID', type=str, default=Config.env_id)
+    parser.add_argument('--env', help='environment ID', type=str, default=Config.env_cont_id)
     parser.add_argument('--seed', help='RNG seed', type=int, default=None)
     parser.add_argument('--alg', help='Algorithm', type=str, default='ppo2')
     parser.add_argument('--num_timesteps', type=float, default=1e6)
@@ -228,7 +211,9 @@ def custom_arg_parser():
     parser.add_argument('--save_video_interval', help='Save video every x steps (0 = disabled)', default=0, type=int)
     parser.add_argument('--save_video_length', help='Length of recorded video. Default: 200', default=200, type=int)
     parser.add_argument('--play', default=False, action='store_true')
+    parser.add_argument('--test', default=False, action='store_true')
     parser.add_argument('--extra_import', help='Extra module to import to access external environments', type=str, default=None)
+    parser.add_argument('--desc', help='Description of experiment', type=str, default=None)
     return parser
 
 def main(args):
@@ -260,19 +245,19 @@ def main(args):
         rank = MPI.COMM_WORLD.Get_rank()
 
     if args.play:
-        register_env(Config.env_id, Config.env_entry_point, Config.env_play_kwargs)
+        register_env(Config.env_cont_id, Config.env_cont_entry_point, Config.env_play_kwargs)
     else:
-        register_env(Config.env_id, Config.env_entry_point, Config.env_train_kwargs)
+        register_env(Config.env_cont_id, Config.env_cont_entry_point, Config.env_train_kwargs)
 
     model, env = train(args, extra_args)
     env.close()
 
-    if args.save_model and rank == 0:
+    if args.save_model and rank == 0 and not args.test:
         save_path = "{}/checkpoints/checkpoints-final".format(results_dir)
         # save_path = osp.expanduser(args.save_path)
         model.save(save_path)
 
-    if args.play:
+    if args.test:
         logger.log("Running trained model")
         env = build_env(args)
         obs = env.reset()
@@ -284,7 +269,9 @@ def main(args):
             if state is not None:
                 actions, _, state, _ = model.step(obs,S=state, M=dones)
             else:
-                actions, _, _, _ = model.step(obs)
+                # actions, _, _, _ = model.step(obs)
+                # for DDPG
+                actions, _, _, _ = model.step(obs, apply_noise=False, compute_Q=True)
 
             obs, _, done, _ = env.step(actions)
             

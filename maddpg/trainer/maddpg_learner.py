@@ -11,6 +11,7 @@ import gym
 import numpy as np
 import tensorflow as tf
 import tensorflow.contrib.layers as layers
+from gym import spaces
 from gym.envs.registration import register
 
 import maddpg.common.tf_util as U
@@ -19,12 +20,12 @@ from baselines import logger
 from baselines.common import set_global_seeds
 from baselines.common.cmd_util import (common_arg_parser, make_env,
                                        make_vec_env, parse_unknown_args)
+from baselines.common.models import get_network_builder
 from baselines.common.policies import build_policy
 from baselines.common.tf_util import get_session
 from maddpg.trainer.maddpg import MADDPGAgentTrainer
 from models.utils import (activation_str_function, create_results_dir,
                           parse_cmdline_kwargs, save_configs)
-from baselines.common.models import get_network_builder
 
 try:
     from mpi4py import MPI
@@ -33,14 +34,17 @@ except ImportError:
 
 def mlp(num_layers=2, num_hidden=64, activation=tf.tanh, layer_norm=False):
     # TODO: remove after testing
-    assert num_layers == 3
-    assert num_hidden == 256
+    assert num_layers == Config.maddpg_train_args['num_layers']
+    assert num_hidden == Config.maddpg_train_args['num_hidden']
     assert activation == tf.nn.relu
+
+    if isinstance(num_hidden, int):
+        num_hidden = [num_hidden]*num_layers
 
     def network_fn(X):
         h = X
         for i in range(num_layers):
-            h = layers.fully_connected(h, num_outputs=num_hidden, activation_fn=activation)
+            h = layers.fully_connected(h, num_outputs=num_hidden[i], activation_fn=activation)
         return h
     return network_fn
 
@@ -105,6 +109,9 @@ def learn(env,
     
     set_global_seeds(seed)
 
+    continuous_ctrl = not isinstance(env.action_space, spaces.Discrete)
+    nb_actions = env.action_space[0].shape[-1] if continuous_ctrl else env.action_space[0].n
+
     # update training parameters
     if total_timesteps is not None:
         assert nb_epochs is None
@@ -161,7 +168,7 @@ def learn(env,
         assert obs_n.shape == (nenvs, num_agents, obs_n.shape[-1])
 
         # 8. initialize metric tracking parameters
-        episode_reward = np.zeros(nenvs, dtype = np.float32) #vector
+        episode_reward = np.zeros((nenvs, len(trainers)), dtype = np.float32) #vector
         episode_step = np.zeros(nenvs, dtype = int) # vector
         episodes = 0 #scalar
         t = 0 # scalar
@@ -169,9 +176,9 @@ def learn(env,
 
         start_time = time.time()
 
-        epoch_episode_rewards = []
-        epoch_episode_steps = []
-        epoch_actions = []
+        epoch_episode_rewards = np.zeros(len(trainers), dtype = np.float32)
+        epoch_episode_steps = np.zeros(nenvs, dtype = int)
+        epoch_actions = 0.0
         epoch_qs = []
         epoch_episodes = 0
 
@@ -186,6 +193,7 @@ def learn(env,
 
         saver = tf.train.Saver()
         episode_rewards_history = deque(maxlen=100)
+        episode_steps_history = deque(maxlen=100)
 
         # 9. nested training loop
         print('Starting iterations...')
@@ -204,34 +212,30 @@ def learn(env,
                         actions_n.append([agent.action(obs) for agent, obs in zip(trainers,obs_n[i])])
                         
                     # confirm actions_n is nenvs x num_agents x len(Action)
-                    assert np.array(actions_n).shape == (nenvs, num_agents, env.action_space[0].n)
+                    assert np.array(actions_n).shape == (nenvs, num_agents, nb_actions)
                     
                     # environment step
                     new_obs_n, rew_n, done_n, info_n = env.step(actions_n)
 
                     # sum of rewards for each env
-                    episode_reward += [sum(r) for r in rew_n]
+                    episode_reward += [r for r in rew_n]
                     episode_step += 1
 
                     # Book-keeping
                     for i, agent in enumerate(trainers):
                         for b in range(nenvs):
-                            # print(obs0[b])
-                            # print(action[b])
-                            # print(reward[b])
-
                             # save experience from all envs for each agent
                             agent.experience(obs_n[b][i], actions_n[b][i], rew_n[b][i], new_obs_n[b][i], done_n[b][i], None)
                     obs_n = new_obs_n
 
-
                     for d in range(len(done_n)):
                         if any(done_n[d]):
                             # Episode done.
-                            epoch_episode_rewards.append(episode_reward[d])
-                            episode_rewards_history.append(episode_reward[d])
-                            epoch_episode_steps.append(episode_step[d])
-                            episode_reward[d] = 0.
+                            epoch_episode_rewards += episode_reward[d]
+                            episode_rewards_history.append(sum(episode_reward[d]))
+                            epoch_episode_steps[d] += episode_step[d]
+                            episode_steps_history.append(episode_step[d])
+                            episode_reward[d] = np.zeros(len(trainers), dtype = np.float32)
                             episode_step[d] = 0
                             epoch_episodes += 1
                             episodes += 1
@@ -265,19 +269,21 @@ def learn(env,
             # 10. logging metrics
             duration = time.time() - start_time
             combined_stats = {}
-            combined_stats[Config.tensorboard_rootdir+'rollout/return'] = np.mean(epoch_episode_rewards)
-            combined_stats[Config.tensorboard_rootdir+'rollout/return_history'] = np.mean(episode_rewards_history)
-            combined_stats[Config.tensorboard_rootdir+'rollout/episode_steps'] = np.mean(epoch_episode_steps)
-            combined_stats[Config.tensorboard_rootdir+'train/loss_actor'] = np.mean(loss_metrics['p_loss'])
-            combined_stats[Config.tensorboard_rootdir+'train/loss_critic'] = np.mean(loss_metrics['q_loss'])
-            combined_stats[Config.tensorboard_rootdir+'train/mean_target_q'] = np.mean(loss_metrics['mean_target_q'])
-            combined_stats[Config.tensorboard_rootdir+'train/mean_rew'] = np.mean(loss_metrics['mean_rew'])
-            combined_stats[Config.tensorboard_rootdir+'train/mean_target_q_next'] = np.mean(loss_metrics['mean_target_q_next'])
-            combined_stats[Config.tensorboard_rootdir+'train/std_target_q'] = np.mean(loss_metrics['std_target_q'])
-            combined_stats[Config.tensorboard_rootdir+'total/duration'] = duration
-            combined_stats[Config.tensorboard_rootdir+'total/steps_per_second'] = float(t) / float(duration)
-            combined_stats[Config.tensorboard_rootdir+'total/episodes'] = episodes
-            combined_stats[Config.tensorboard_rootdir+'rollout/episodes'] = epoch_episodes
+            combined_stats[Config.tensorboard_rootdir+'ro/return'] = np.mean(epoch_episode_rewards) / float(episodes) # average return of agents over episodes
+            combined_stats[Config.tensorboard_rootdir+'ro/return_history'] = np.mean(episode_rewards_history)
+            combined_stats[Config.tensorboard_rootdir+'ro/episode_steps'] = np.mean(epoch_episode_steps) / float(episodes) # average steps of agents over episodes
+            combined_stats[Config.tensorboard_rootdir+'ro/episode_steps_history'] = np.mean(episode_steps_history)
+            combined_stats[Config.tensorboard_rootdir+'tr/loss_actor'] = np.mean(loss_metrics['p_loss'])
+            combined_stats[Config.tensorboard_rootdir+'tr/loss_critic'] = np.mean(loss_metrics['q_loss'])
+            combined_stats[Config.tensorboard_rootdir+'tr/mean_target_q'] = np.mean(loss_metrics['mean_target_q'])
+            combined_stats[Config.tensorboard_rootdir+'tr/mean_rew'] = np.mean(loss_metrics['mean_rew'])
+            combined_stats[Config.tensorboard_rootdir+'tr/mean_target_q_next'] = np.mean(loss_metrics['mean_target_q_next'])
+            combined_stats[Config.tensorboard_rootdir+'tr/std_target_q'] = np.mean(loss_metrics['std_target_q'])
+            combined_stats[Config.tensorboard_rootdir+'to/duration'] = duration
+            combined_stats[Config.tensorboard_rootdir+'to/steps_per_second'] = float(t) / float(duration)
+            combined_stats[Config.tensorboard_rootdir+'to/episodes'] = episodes
+            combined_stats[Config.tensorboard_rootdir+'ro/episodes'] = epoch_episodes
+            combined_stats[Config.tensorboard_rootdir+'ro/std_return'] = np.std(epoch_episode_rewards) # std of returns between agents
             
             # Evaluation statistics.
             # if eval_env is not None:
@@ -295,8 +301,8 @@ def learn(env,
             combined_stats = {k : v / mpi_size for (k,v) in zip(combined_stats.keys(), combined_stats_sums)}
 
             # Total statistics.
-            combined_stats[Config.tensorboard_rootdir+'total/epochs'] = epoch + 1
-            combined_stats[Config.tensorboard_rootdir+'total/steps'] = t
+            combined_stats[Config.tensorboard_rootdir+'to/epochs'] = epoch + 1
+            combined_stats[Config.tensorboard_rootdir+'to/steps'] = t
 
             for key in sorted(combined_stats.keys()):
                 logger.record_tabular(key, combined_stats[key])

@@ -13,7 +13,7 @@ from gym_highway.multiagent_envs import highway_constants as Constants
 from gym_highway.multiagent_envs.agent import Car, Obstacle
 
 class HighwaySimulator:
-    def __init__(self, manual=False, inf_obs=False, save=False, render=False):
+    def __init__(self, manual=False, inf_obs=False, save=False, render=False, real_time=False, continuous=False):
         pygame.init()
         width = Constants.WIDTH
         height = Constants.HEIGHT
@@ -21,7 +21,8 @@ class HighwaySimulator:
             pygame.display.set_caption("Car tutorial")
             self.screen = pygame.display.set_mode((width, height))
         self.clock = pygame.time.Clock()
-        self.ticks = 60
+        self.ticks = 60.0 if real_time else 36.0
+        self.framerate = self.ticks*2 if real_time else 0.0
         self.exit = False
 
         # simulation options
@@ -32,6 +33,7 @@ class HighwaySimulator:
         self.is_data_saved = save
         self.render = render
         self.run_duration = 60 # 60 seconds
+        self.continuous_ctrl = continuous
 
         # list of agents and entities (can change at execution-time!)
         self.agents = None
@@ -84,11 +86,15 @@ class HighwaySimulator:
         self.screen.blit(text, (0,0))
         self.screen.blit(text_angle, (0,25))
 
+    def displayVel(self, velocity):
+        font = pygame.font.SysFont(None, 25)
+        text = font.render("Velocity: "+str(velocity), True, Constants.WHITE)
+        self.screen.blit(text, (0,50))
+
     def displayPos(self, position):
         font = pygame.font.SysFont(None, 25)
-        # text = font.render("X: "+str(position.x)+", Y: "+str(position.y), True, WHITE)
-        text = font.render("Velocity: "+str(position), True, Constants.WHITE)
-        self.screen.blit(text, (0,50))
+        text = font.render("X: "+str(position.x)+", Y: "+str(position.y), True, Constants.WHITE)
+        self.screen.blit(text, (0,100))
 
     def displayAction(self, action):
         font = pygame.font.SysFont(None, 25)
@@ -101,26 +107,39 @@ class HighwaySimulator:
             rect = rotated.get_rect()
             self.screen.blit(rotated, auto.position * Constants.ppu - (rect.width / 2, rect.height / 2))
 
-    # execute the given action for the specified agent
-    def executeAction(self, agent, all_obstacles):
+    def executeAction(self, agent, all_obstacles, dt):
         selected_action = agent.action
-        if (selected_action == actions.Action.ACCELERATE) and not agent.do_accelerate:
-            self.accelerate(agent)
-        elif (selected_action == actions.Action.MAINTAIN) and not agent.do_maintain:
-            self.maintain(agent, all_obstacles)
-        # elif (selected_action == actions.Action.DECELERATE) and not agent.do_decelerate:
-        #     self.decelerate(agent)
+        if self.continuous_ctrl:
+            self.executeActionContinuous(selected_action, agent, all_obstacles, dt)
+        else:
+            self.executeActionDiscrete(selected_action, agent, all_obstacles)
 
-        agent.acceleration = max(-agent.max_acceleration, min(agent.acceleration, agent.max_acceleration))
+    # execute the given action for the specified leader
+    def executeActionDiscrete(self, selected_action, leader, all_obstacles):
+        if (selected_action == Action.ACCELERATE) and not leader.do_accelerate:
+            self.accelerate(leader)
+        elif (selected_action == Action.MAINTAIN) and not leader.do_maintain:
+            self.maintain(leader, all_obstacles)
+        # elif (selected_action == Action.DECELERATE) and not leader.do_decelerate:
+        #     self.decelerate(leader)
 
-        if (selected_action == actions.Action.RIGHT) and not agent.right_mode:
-            self.turn_right(agent)
-        elif (selected_action == actions.Action.LEFT) and not agent.left_mode:
-            self.turn_left(agent)
+        leader.acceleration = max(-leader.max_acceleration, min(leader.acceleration, leader.max_acceleration))
 
-        agent.steering = max(-agent.max_steering, min(agent.steering, agent.max_steering))
-        
-        return
+        if (selected_action == Action.RIGHT) and not leader.right_mode:
+            self.turn_right(leader)
+        elif (selected_action == Action.LEFT) and not leader.left_mode:
+            self.turn_left(leader)
+
+        leader.steering = max(-leader.max_steering, min(leader.steering, leader.max_steering))
+
+    def executeActionContinuous(self, selected_action, leader, all_obstacles, dt):
+        # TODO: need to test
+        # TODO: assume selected_action[0] is acceleration between -1 and 1
+        leader.acceleration += selected_action[0] * leader.max_acceleration * dt
+        leader.acceleration = max(-leader.max_acceleration, min(leader.acceleration, leader.max_acceleration))
+
+        leader.steering += selected_action[1] * leader.max_steering * dt
+        leader.steering = max(-leader.max_steering, min(leader.steering, leader.max_steering))
 
     # these booleans are required to ensure the action is executed over a period of time
     def accelerate(self, car):
@@ -183,6 +202,7 @@ class HighwaySimulator:
         self.agents = pygame.sprite.Group()
         self.scripted_agents = pygame.sprite.Group()
         self.all_obstacles = pygame.sprite.Group()
+        self.lane_max_obs = [None for _ in range(Constants.NUM_LANES)]
 
         self.reference_car = None
 
@@ -199,6 +219,7 @@ class HighwaySimulator:
             new_obstacle = Obstacle(id=data['id'], x=data['x'], y=data['y'], vel_x=data['vel_x'], vel_y=0.0, lane_id=data['lane_id'], color=data['color'])
             self.scripted_agents.add(new_obstacle)
             self.all_obstacles.add(new_obstacle)
+            self.lane_max_obs[new_obstacle.lane_id-1] = new_obstacle
 
         self.action_timer = 0.0
         self.log_timer = 0.0
@@ -229,7 +250,8 @@ class HighwaySimulator:
         """
 
         # dt = 50.0/1000.0 (For faster simulation)
-        dt = self.clock.get_time() / 1000
+        # dt = self.clock.get_time() / 1000
+        dt = 1.0/self.ticks
 
         # reset reward so that it corresponds to current action
         self.reward = [0.0]*len(self.policy_agents_data)
@@ -243,7 +265,7 @@ class HighwaySimulator:
         if self.is_paused:
             if self.render:
                 pygame.display.flip()
-            self.clock.tick(self.ticks)
+            self.clock.tick(self.framerate)
             return 0.0
 
         self.action_timer += dt
@@ -256,12 +278,12 @@ class HighwaySimulator:
 
         # execute action for each agent (actions are updated in the env after calling update())
         for agent in self.agents:
-            self.executeAction(agent, self.all_obstacles)
+            self.executeAction(agent, self.all_obstacles, dt)
 
         # update all sprites
         # this will update all the agents and obstacles based on the actions selected
-        self.agents.update(dt, self.reference_car)
-        self.scripted_agents.update(dt, self.reference_car)
+        self.agents.update(dt, self.reference_car, self.continuous_ctrl)
+        self.scripted_agents.update(dt, self.reference_car, self.agents)
 
         # keep track of agent velocity at end of every action
         if self.log_timer >= Constants.ACTION_RESET_TIME:
@@ -271,29 +293,76 @@ class HighwaySimulator:
 
         sorted_agents = sorted(self.agents, key=lambda x: x.position.x, reverse=True)
         self.reference_car = sorted_agents[0]
+        # get the last agent to test for obstacle removal
+        last_agent = sorted_agents[-1]
 
         # generate new obstacles
         if self.inf_obstacles:
-            for obstacle in self.scripted_agents:
-                if obstacle.position.x < -Constants.CAR_WIDTH/Constants.ppu:
-                    # remove old obstacle
-                    self.scripted_agents.remove(obstacle)
-                    self.all_obstacles.remove(obstacle)
-                    # obstacle_lanes.remove(obstacle.lane_id)
-
+            # spawn new obstacles when none ahead of lead agent
+            for lane in range(Constants.NUM_LANES):
+                obstacle = self.lane_max_obs[lane]
+                # check the relative position of lead obstacle
+                if obstacle.position.x < -Constants.CAR_WIDTH/32:
                     # add new obstacle
-                    rand_pos_x = float(randrange(70, 80))
-                    rand_pos_y = Constants.NEW_LANES[obstacle.lane_id-1]
-                    rand_vel_x = float(randrange(5, 15))
-                    rand_lane_id = obstacle.lane_id
+                    rand_pos_x = float(random.uniform(70, 100))
+                    rand_pos_y = Constants.NEW_LANES[lane]
+                    rand_vel_x = float(random.uniform(5, 7))
+                    rand_lane_id = lane+1
 
-                    # use same id for new obstacle so that it maintains its position in the observations
-                    new_obstacle = Obstacle(id=obstacle.id, x=rand_pos_x, y=rand_pos_y, vel_x=rand_vel_x, vel_y=0.0, lane_id=rand_lane_id, color=Constants.YELLOW)
+                    # new obs raw position is lead agent raw pos + diff between relative pos
+                    new_raw_x = self.reference_car.raw_position.x + (rand_pos_x-self.reference_car.position.x)
+                    new_obstacle = Obstacle(id=obstacle.id, x=rand_pos_x, y=rand_pos_y, raw_x=new_raw_x, vel_x=rand_vel_x, vel_y=0.0, lane_id=rand_lane_id, color=Constants.YELLOW)
                     self.scripted_agents.add(new_obstacle)
                     self.all_obstacles.add(new_obstacle)
 
-                    # TEST: reward for overtaking each vehicle
-                    # self.reward += 1
+                    # slow down old obstacle to new obstacle speed
+                    adj_min_vel = min(rand_vel_x, obstacle.velocity.x)
+                    obstacle.velocity.x = adj_min_vel
+                    obstacle.init_velocity.x = adj_min_vel
+
+                    self.lane_max_obs[lane] = new_obstacle
+
+            # remove old obstacle if last agent has cleared it
+            # if obs is around -12px behind last agents, remove it
+            obs_pre_count = len(self.scripted_agents)
+            rem_count = 0
+            for obstacle in self.scripted_agents:
+                # standard overtake distance with a 2px buffer to account for rounding differences in floating point
+                overtake_diff = (-Constants.CAR_WIDTH/32 - self.reference_car.position.x) - 2
+                if (obstacle.raw_position.x - last_agent.raw_position.x) < overtake_diff:
+                    self.scripted_agents.remove(obstacle)
+                    self.all_obstacles.remove(obstacle)
+
+                    # TODO: remove after testing
+                    rem_count += 1
+            # TODO: check if only appropriate obs are being removed
+            # TEST: see if we are removing more than we should
+            assert len(self.scripted_agents) >= 3
+            # TEST: check if remove() deletes more than it should
+            assert len(self.scripted_agents) == obs_pre_count-rem_count
+
+        # # generate new obstacles
+        # if self.inf_obstacles:
+        #     for obstacle in self.scripted_agents:
+        #         if obstacle.position.x < -Constants.CAR_WIDTH/Constants.ppu:
+        #             # remove old obstacle
+        #             self.scripted_agents.remove(obstacle)
+        #             self.all_obstacles.remove(obstacle)
+        #             # obstacle_lanes.remove(obstacle.lane_id)
+
+        #             # add new obstacle
+        #             rand_pos_x = float(randrange(70, 100))
+        #             rand_pos_y = Constants.NEW_LANES[obstacle.lane_id-1]
+        #             rand_vel_x = float(randrange(5, 7))
+        #             rand_lane_id = obstacle.lane_id
+
+        #             # use same id for new obstacle so that it maintains its position in the observations
+        #             new_obstacle = Obstacle(id=obstacle.id, x=rand_pos_x, y=rand_pos_y, vel_x=rand_vel_x, vel_y=0.0, lane_id=rand_lane_id, color=Constants.YELLOW)
+        #             self.scripted_agents.add(new_obstacle)
+        #             self.all_obstacles.add(new_obstacle)
+
+        #             # TEST: reward for overtaking each vehicle
+        #             # self.reward += 1
 
         # Drawing
         if self.render:
@@ -314,18 +383,20 @@ class HighwaySimulator:
             # update collision display count
             self.displayScore(self.num_obs_collisions, self.num_agent_collisions)
 
+            # display velocity of lead car
+            self.displayVel(self.reference_car.velocity.x)
+
             # display position of car
-            self.displayPos(self.reference_car.velocity.x)
+            self.displayPos(self.reference_car.raw_position)
 
             # display selected action
-            # self.displayAction(action)
+            self.displayAction(self.reference_car.action)
 
             pygame.display.flip()
 
         self.collision_count_lock = False
 
-        self.clock.tick(self.ticks)
-        # self.clock.tick()
+        self.clock.tick(self.framerate)
 
     def check_collisions(self):
         # collision check (done before update() to check if previous action led to collisions)
@@ -352,6 +423,8 @@ class HighwaySimulator:
 
     def get_state(self):
         """
+            @ Deprecated
+            
             FIXME: sprites are not ordered! the observations are randomized each step!
 
             Observations correspond to positions and velocities of all vehicles on the road.

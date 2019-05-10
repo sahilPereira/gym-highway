@@ -17,11 +17,11 @@ logger = logging.getLogger(__name__)
 class HighwayWorld(object):
     # metadata = {'render.modes': ['human']}
 
-    def __init__(self, manual=False, inf_obs=True, save=False, render=True):
+    def __init__(self, manual=False, inf_obs=True, save=False, render=True, real_time=False):
         # self.__version__ = "0.0.1"
         # logging.info("HighwayWorld - Version {}".format(self.__version__))
 
-        self.env = self._configure_environment(manual, inf_obs, save, render)
+        self.env = self._configure_environment(manual, inf_obs, save, render, real_time)
         self.action_space = spaces.Discrete(len(actions.Action))
         num_vehicles = len(self.env.cars_list) + 3 # max 3 obstacles on road at any given time
 
@@ -50,7 +50,7 @@ class HighwayWorld(object):
     def scripted_agents(self):
         return [agent for agent in self.agents if agent.action_callback is not None]
 
-    def _configure_environment(self, manual, inf_obs, save, render):
+    def _configure_environment(self, manual, inf_obs, save, render, real_time):
         # initial positions of obstacles and agents
         obstacle_1 = {'id':100, 'x':-20, 'y':Constants.LANE_1_C, 'vel_x':13.0, 'lane_id':1, 'color':Constants.YELLOW}
         obstacle_2 = {'id':101, 'x':-25, 'y':Constants.LANE_2_C, 'vel_x':12.0, 'lane_id':2, 'color':Constants.YELLOW}
@@ -64,7 +64,7 @@ class HighwayWorld(object):
         # car_5 = {'id':4, 'x':5, 'y':LANE_3_C, 'vel_x':10.0, 'vel_y':0.0, 'lane_id':3}
         cars_list = [car_1]
 
-        highwaySim = HighwaySimulator(cars_list, obstacle_list, manual, inf_obs, save, render)
+        highwaySim = HighwaySimulator(cars_list, obstacle_list, manual, inf_obs, save, render, real_time)
         return highwaySim
 
     # TODO: not sure if this communication channel is required
@@ -81,7 +81,7 @@ class HighwayWorld(object):
         Update state of the world
         """
         reward = 0.0
-        num_steps = 15 #int(60*0.25)
+        num_steps = int(self.env.ticks/4)
 
         # set actions for scripted agents 
         # TODO: might be useful when we want the scripted agents to have a more robust script

@@ -22,27 +22,39 @@ ACTION_LOOKUP = {
 class HighwayEnv(gym.Env, utils.EzPickle):
     metadata = {'render.modes': ['human']}
 
-    def __init__(self, manual=False, inf_obs=True, save=False, render=True):
+    def __init__(self, manual=False, inf_obs=True, save=False, render=True, real_time=False):
         self.__version__ = "0.0.1"
         logging.info("HighwayEnv - Version {}".format(self.__version__))
 
-        self.env = self._configure_environment(manual, inf_obs, save, render)
+        self.env = self._configure_environment(manual, inf_obs, save, render, real_time)
 
         self.action_space = spaces.Discrete(len(Action))
 
         num_vehicles = len(self.env.cars_list) + 3 # max 3 obstacles on road at any given time
 
-        low = np.array([-60.0, 0.0, 0.0, -20.0]*num_vehicles).flatten()
-        high = np.array([60.0, 8.0, 20.0, 20.0]*num_vehicles).flatten()
+        control_low = np.array([-5.0, -30.0])
+        control_high = np.array([5.0, 30.0])
+
+        # first bound is for raw min position
+        pos_low = np.array([0.0, 0.0]+[-60.0, -8.0]*(num_vehicles-1)).flatten()
+        vel_low = np.array([-20.0, -20.0]*num_vehicles).flatten()
+        # first bound is for raw max position
+        pos_high = np.array([1200.0, 8.0]+[60.0, 8.0]*(num_vehicles-1)).flatten()
+        vel_high = np.array([20.0, 20.0]*num_vehicles).flatten()
+        
+        low = np.concatenate((control_low, pos_low, vel_low))
+        high = np.concatenate((control_high, pos_high, vel_high))
+
+        assert len(low) == len(control_low)+len(pos_low)+len(vel_low)
+        assert len(high) == len(control_high)+len(pos_high)+len(vel_high)
+
         self.observation_space = spaces.Box(low, high, dtype=np.float32)
 
-        # self.action_episode_memory = []
-
-    def _configure_environment(self, manual, inf_obs, save, render):
+    def _configure_environment(self, manual, inf_obs, save, render, real_time):
         # initial positions of obstacles and agents
-        obstacle_1 = {'id':1, 'x':-20, 'y':Constants.LANE_1_C, 'vel_x':13.0, 'lane_id':1, 'color':Constants.YELLOW}
-        obstacle_2 = {'id':2, 'x':-25, 'y':Constants.LANE_2_C, 'vel_x':12.0, 'lane_id':2, 'color':Constants.YELLOW}
-        obstacle_3 = {'id':3, 'x':-40, 'y':Constants.LANE_3_C, 'vel_x':10.0, 'lane_id':3, 'color':Constants.YELLOW}
+        obstacle_1 = {'id':1, 'x':-20, 'y':Constants.LANE_1_C, 'vel_x':7.0, 'lane_id':1, 'color':Constants.YELLOW}
+        obstacle_2 = {'id':2, 'x':-25, 'y':Constants.LANE_2_C, 'vel_x':5.0, 'lane_id':2, 'color':Constants.YELLOW}
+        obstacle_3 = {'id':3, 'x':-40, 'y':Constants.LANE_3_C, 'vel_x':6.0, 'lane_id':3, 'color':Constants.YELLOW}
         obstacle_list = [obstacle_1, obstacle_2, obstacle_3]
 
         car_1 = {'id':0, 'x':20, 'y':Constants.LANE_2_C, 'vel_x':0.0, 'vel_y':0.0, 'lane_id':2}
@@ -52,7 +64,7 @@ class HighwayEnv(gym.Env, utils.EzPickle):
         # car_5 = {'id':4, 'x':5, 'y':LANE_3_C, 'vel_x':10.0, 'vel_y':0.0, 'lane_id':3}
         cars_list = [car_1]
 
-        highwaySim = HighwaySimulator(cars_list, obstacle_list, manual, inf_obs, save, render)
+        highwaySim = HighwaySimulator(cars_list, obstacle_list, manual, inf_obs, save, render, real_time)
         return highwaySim
 
     def step(self, action):
@@ -86,7 +98,8 @@ class HighwayEnv(gym.Env, utils.EzPickle):
 
         reward = 0.0
 
-        num_steps = 15 #int(60*0.25)
+        # allow for actions at 4Hz
+        num_steps = int(self.env.ticks/4)
         for _ in range(num_steps):
             reward = self._take_action(action)
 

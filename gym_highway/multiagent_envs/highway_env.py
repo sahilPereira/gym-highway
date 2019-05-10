@@ -32,19 +32,23 @@ class MultiAgentEnv(gym.Env):
         self.shared_reward = shared_reward
 
         num_entities = len(self.world.entities)
-        # observations contain all positions (x,y), followed by all velocities (vx,vy)
+        # observations contain (accel, steering), all positions (x,y), followed by all velocities (vx,vy)
         # using relative positions and velocities for bounding
-        pos_low = np.array([-60.0, -8.0]*num_entities).flatten()
-        vel_low = np.array([-20.0, -20.0]*num_entities).flatten()
+        control_low = np.array([-5.0, -30.0])
+        control_high = np.array([5.0, 30.0])
 
-        pos_high = np.array([60.0, 8.0]*num_entities).flatten()
+        # first bound is for raw min position
+        pos_low = np.array([0.0, 0.0]+[-60.0, -8.0]*(num_entities-1)).flatten()
+        vel_low = np.array([-20.0, -20.0]*num_entities).flatten()
+        # first bound is for raw max position
+        pos_high = np.array([1200.0, 8.0]+[60.0, 8.0]*(num_entities-1)).flatten()
         vel_high = np.array([20.0, 20.0]*num_entities).flatten()
         
-        self.low = np.concatenate((pos_low,vel_low))
-        self.high = np.concatenate((pos_high,vel_high))
+        self.low = np.concatenate((control_low, pos_low, vel_low))
+        self.high = np.concatenate((control_high, pos_high, vel_high))
 
-        assert len(self.low) == len(pos_low)+len(vel_low)
-        assert len(self.high) == len(pos_high)+len(vel_high)
+        assert len(self.low) == len(control_low)+len(pos_low)+len(vel_low)
+        assert len(self.high) == len(control_high)+len(pos_high)+len(vel_high)
 
         # configure spaces
         self.action_space = [None]*self.n
@@ -61,7 +65,7 @@ class MultiAgentEnv(gym.Env):
         Update state of the world
         """
         reward = 0.0
-        num_steps = 15 #int(60*0.25)
+        num_steps = int(self.world.ticks/4)
 
         # set actions for scripted agents 
         # TODO: might be useful when we want the scripted agents to have a more robust script

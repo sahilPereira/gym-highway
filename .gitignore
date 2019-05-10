@@ -3,6 +3,7 @@
 *.txt
 .idea
 /logs
+gymenv/*
 .vscode/*
 */.vscode/*
 */.gitignore
