@@ -50,6 +50,8 @@ def parse_args():
     parser.add_argument("--num_agents", type=int, default=1, help="number of total agents")
     parser.add_argument('--reward_scale', help='Reward scale factor. Default: 1.0', default=1.0, type=float)
     parser.add_argument('--continuous', default=False, help='Use continuous actions', action='store_true')
+    parser.add_argument('--save_model', default=True, action='store_false')
+    parser.add_argument('--test', default=False, action='store_true')
     parser.add_argument('--play', default=False, action='store_true')
     return parser
 
@@ -363,5 +365,38 @@ if __name__ == '__main__':
     else:
         register_env(Config.ma_env_id, Config.ma_env_entry_point, make_env_config(args))
 
-    model, env = train(args, extra_args)
+    agents, env = train(args, extra_args)
     env.close()
+
+    if args.save_model and rank == 0 and not args.test:
+        save_path = "{}/checkpoints/checkpoints-final".format(results_dir)
+        # save_path = osp.expanduser(args.save_path)
+        agents[0].save(save_path)
+
+    if args.test:
+        logger.log("Running trained agents")
+        env = build_env(args)
+        obs_n = env.reset()
+
+        state = agents.initial_state if hasattr(agents, 'initial_state') else None
+        dones = np.zeros((len(agents),))
+
+        while True:
+            if state is not None:
+                actions, _, state, _ = agents.step(obs_n ,S=state, M=dones)
+            else:
+                # actions, _, _, _ = agents.step(obs_n)
+                # for DDPG
+                # actions, _, _, _ = agents.step(obs_n, apply_noise=False, compute_Q=True)
+                rep_obs = np.stack([obs_n for _ in range(len(agents))])
+                actions_n = [agent.step(obs, apply_noise=True, compute_Q=False)[0] for agent, obs in zip(agents, rep_obs)]
+
+            obs_n, _, done, _ = env.step(actions_n)
+            
+            # Not required since the gym highway environment renders based on init param
+            # env.render()
+            done = done.any() if isinstance(done, np.ndarray) else done
+
+            if done:
+                obs_n = env.reset()
+        env.close()
