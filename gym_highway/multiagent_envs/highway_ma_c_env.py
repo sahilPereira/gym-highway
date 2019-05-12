@@ -36,17 +36,20 @@ class MultiAgentEnvContinuous(MultiAgentEnv):
         # first bound is for raw max position
         pos_high = np.array([1200.0, 8.0]+[60.0, 8.0]*(num_entities-1)).flatten()
         vel_high = np.array([20.0, 20.0]*num_entities).flatten()
-        
+
         self.low = np.concatenate((control_low, pos_low, vel_low))
         self.high = np.concatenate((control_high, pos_high, vel_high))
 
         assert len(self.low) == len(control_low)+len(pos_low)+len(vel_low)
         assert len(self.high) == len(control_high)+len(pos_high)+len(vel_high)
 
+        # observation concatenation
+        self.num_obs = 3
+
         # configure spaces
         self.action_space = [None]*self.n
         self.observation_space = [None]*self.n
-        obs_dim = len(self.observation_callback(self.world)[0])
+        obs_dim = len(self.observation_callback(self.world)[0])*self.num_obs
         for agent in self.agents:
             # action space continuous
             self.action_space[agent.id] = spaces.Box(low=np.array([-1.0, -1.0]), high=np.array([1.0, 1.0]), dtype=np.float32)
@@ -63,15 +66,33 @@ class MultiAgentEnvContinuous(MultiAgentEnv):
         for agent in self.agents:
             agent.action = action_n[agent.id]
         
+        # sample rate for self.num_obs samples
+        sample_rate = int(num_steps/self.num_obs)
+        obs_n_cat = [[] for _ in range(len(self.agents))]
+
         # perform num_steps in world
-        for _ in range(num_steps):
+        obs_count = 0
+        for i in range(num_steps):
             reward_n, done_n = self._act(action_n)
 
+            if i and i%sample_rate == 0:
+                obs_n = self._get_obs_norm()
+                for j in range(len(obs_n)):
+                    obs_n_cat[j].extend(obs_n[j])
+                obs_count += 1
             # if any agent is done, break
             if any(done_n):
                 break
 
-        obs_n = self._get_obs_norm()
+        # always get self.num_obs concatenated observations
+        if obs_count < self.num_obs:
+            obs_count_diff = self.num_obs-obs_count
+            obs_n = self._get_obs_norm()
+            obs_n = np.tile(obs_n, obs_count_diff)
+            for j in range(len(obs_n)):
+                obs_n_cat[j].extend(obs_n[j])
+        
+        # obs_n = self._get_obs_norm()
         info_n = {'n': self._get_info()}
         
         # all agents get total reward in cooperative case
@@ -79,5 +100,13 @@ class MultiAgentEnvContinuous(MultiAgentEnv):
             reward = np.sum(reward_n)
             reward_n = [reward] * self.n
         
-        return obs_n, reward_n, done_n, info_n
+        return obs_n_cat, reward_n, done_n, info_n
 
+    def reset(self):
+        # reset world
+        self.reset_callback(self.world)
+
+        obs_n = self._get_obs_norm()
+        obs_n_cat = np.tile(obs_n, self.num_obs)
+        # return observations for all agents
+        return obs_n_cat
