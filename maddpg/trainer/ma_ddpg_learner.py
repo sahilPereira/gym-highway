@@ -217,11 +217,13 @@ class MADDPG(object):
         self.critic_with_actor_tf = denormalize(tf.clip_by_value(self.normalized_critic_with_actor_tf, self.return_range[0], self.return_range[1]), self.ret_rms)
 
         # we need to use actions for all agents
-        target_act_input_n = self.actions + [] # copy actions
-        target_act_input_n[self.agent_index] = self.target_actor_tf # update current agent action using its target actor
-        target_act_input_n_t = tf.transpose(target_act_input_n, perm=[1, 0, 2])
-        target_act_input_n_t_flat = tf.reshape(target_act_input_n_t, [-1, self.act_shape_prod])
-        Q_obs1 = denormalize(target_critic(normalized_obs1_flat, target_act_input_n_t_flat), self.ret_rms)
+        # target_act_input_n = self.actions + [] # copy actions
+        # target_act_input_n[self.agent_index] = self.target_actor_tf # update current agent action using its target actor
+        # target_act_input_n_t = tf.transpose(target_act_input_n, perm=[1, 0, 2])
+        # target_act_input_n_t_flat = tf.reshape(target_act_input_n_t, [-1, self.act_shape_prod])
+
+        # target actions are computed in train() and passed into action placeholder
+        Q_obs1 = denormalize(target_critic(normalized_obs1_flat, actions_t_flat), self.ret_rms)
         self.target_Q = self.rewards + (1. - self.terminals1) * gamma * Q_obs1
 
         # Set up parts.
@@ -356,11 +358,6 @@ class MADDPG(object):
         feed_dict = {self.obs0: U.adjust_shape(self.obs0, [obs])}
         # feed_dict={ph: [data] for ph, data in zip(self.obs0, obs)}
         # feed_dict = {self.obs0: [obs]}
-        
-        # Get the normalized obs first
-        # norm_obs0 = self.sess.run(self.norm_obs0, feed_dict=feed_dict)
-        # use the normalized obs for training
-        # feed_dict = {ph: data for ph, data in zip(self.norm_obs0_ph, norm_obs0)}
 
         if compute_Q:
             action, q = self.sess.run([actor_tf, self.critic_with_actor_tf], feed_dict=feed_dict)
@@ -420,34 +417,30 @@ class MADDPG(object):
         # collect replay sample from all agents
         obs0_n = []
         obs1_n = []
-        rewards_n = []
         act_n = []
-        terminals1_n = []
+        target_act_n = []
         for i in range(self.num_agents):
             # Get a batch.
             batch = agents[i].memory.sample(batch_size=self.batch_size, index=replay_sample_index)
             obs0_n.append(batch['obs0'])
             obs1_n.append(batch['obs1'])
             act_n.append(batch['actions'])
-            # rewards_n.append(batch['rewards'])
-            # terminals1_n.append(batch['terminals1'])
         batch = self.memory.sample(batch_size=self.batch_size, index=replay_sample_index)
 
+        # get target actions for each agent using obs1
+        for i in range(self.num_agents):
+            target_acts = self.sess.run(agents[i].target_actor_tf, feed_dict={agents[i].obs1: obs1_n})
+            # save the batch of target actions
+            target_act_n.append(target_acts)
+        
         # fill placeholders in obs1 with corresponding obs from each agent's replay buffer
         # self.obs1 and obs1_n are lists of size num_agents
-        # feed_dict={ph: data for ph, data in zip(self.obs1, obs1_n)}
-        feed_dict = {self.obs1: obs1_n}
-
-        # TODO: find a better way to do this 
-        # Get the normalized obs first
-        # norm_obs1 = self.sess.run(self.norm_obs1, feed_dict=feed_dict)
-        # use the normalized obs for training
-        # feed_dict = {self.norm_obs1_ph: norm_obs1}
-        # feed_dict = {ph: data for ph, data in zip(self.norm_obs1_ph, norm_obs1)}
-
-        # actions required for critic
         act_dict={ph: data for ph, data in zip(self.actions, act_n)}
-        feed_dict.update(act_dict)
+        target_act_dict={ph: data for ph, data in zip(self.actions, target_act_n)}
+
+        # feed dict for target_Q calculation
+        feed_dict = {self.obs1: obs1_n}
+        feed_dict.update(target_act_dict)
         feed_dict.update({self.rewards: batch['rewards']})
         feed_dict.update({self.terminals1: batch['terminals1'].astype('float32')})
 
@@ -485,26 +478,13 @@ class MADDPG(object):
         # Get all gradients and perform a synced update.
         ops = [self.actor_grads, self.actor_loss, self.critic_grads, self.critic_loss]
 
-        # generate feed_dict for multiple observations and actions
-        # feed_dict={ph: data for ph, data in zip(self.obs0, obs0_n)}
+        # generate feed_dict for gradient and loss computation
         feed_dict = {self.obs0: obs0_n}
-
-        # Get the normalized obs first
-        # norm_obs0 = self.sess.run(self.norm_obs0, feed_dict=feed_dict)
-        # use the normalized obs for training
-        # feed_dict = {self.norm_obs0_ph: norm_obs0}
-        # feed_dict = {ph: data for ph, data in zip(self.norm_obs0_ph, norm_obs0)}
-
-        # act_dict={ph: data for ph, data in zip(self.actions, act_n)}
         feed_dict.update(act_dict)
         feed_dict.update({self.critic_target: target_Q})
 
         actor_grads, actor_loss, critic_grads, critic_loss = self.sess.run(ops, feed_dict=feed_dict)
-        # actor_grads, actor_loss, critic_grads, critic_loss = self.sess.run(ops, feed_dict={
-        #     self.obs0: batch['obs0'],
-        #     self.actions: batch['actions'],
-        #     self.critic_target: target_Q,
-        # })
+
         self.actor_optimizer.update(actor_grads, stepsize=self.actor_lr)
         self.critic_optimizer.update(critic_grads, stepsize=self.critic_lr)
 
@@ -536,12 +516,6 @@ class MADDPG(object):
             # generate feed_dict for multiple observations and actions
             # feed_dict={ph: data for ph, data in zip(self.obs0, obs0_n)}
             feed_dict = {self.obs0: obs0_n}
-
-            # Get the normalized obs first
-            # norm_obs0 = self.sess.run(self.norm_obs0, feed_dict=feed_dict)
-            # use the normalized obs for training
-            # feed_dict = {self.norm_obs0_ph: norm_obs0}
-            # feed_dict = {ph: data for ph, data in zip(self.norm_obs0_ph, norm_obs0)}
 
             actions_dict={ph: data for ph, data in zip(self.actions, act_n)}
             feed_dict.update(actions_dict)
@@ -577,23 +551,12 @@ class MADDPG(object):
             obs0_n.append(batch['obs0'])
         # feed_dict={ph: data for ph, data in zip(self.obs0, obs0_n)}
         feed_dict = {self.obs0: obs0_n}
-        
-        # Get the normalized obs first
-        # norm_obs0 = self.sess.run(self.norm_obs0, feed_dict=feed_dict)
-        # use the normalized obs for training
-        # feed_dict = {self.norm_obs0_ph: norm_obs0}
-        # feed_dict = {ph: data for ph, data in zip(self.norm_obs0_ph, norm_obs0)}
-
         feed_dict.update({self.param_noise_stddev: self.param_noise.current_stddev})
 
         self.sess.run(self.perturb_adaptive_policy_ops, feed_dict={
             self.param_noise_stddev: self.param_noise.current_stddev,
         })
         distance = self.sess.run(self.adaptive_policy_distance, feed_dict=feed_dict)
-        # distance = self.sess.run(self.adaptive_policy_distance, feed_dict={
-        #     self.obs0: batch['obs0'],
-        #     self.param_noise_stddev: self.param_noise.current_stddev,
-        # })
 
         if MPI is not None:
             mean_distance = MPI.COMM_WORLD.allreduce(distance, op=MPI.SUM) / MPI.COMM_WORLD.Get_size()

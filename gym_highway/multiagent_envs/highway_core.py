@@ -324,8 +324,8 @@ class HighwaySimulator:
 
             # remove old obstacle if last agent has cleared it
             # if obs is around -12px behind last agents, remove it
-            obs_pre_count = len(self.scripted_agents)
-            rem_count = 0
+            # obs_pre_count = len(self.scripted_agents)
+            # rem_count = 0
             for obstacle in self.scripted_agents:
                 # standard overtake distance with a 2px buffer to account for rounding differences in floating point
                 overtake_diff = (-Constants.CAR_WIDTH/32 - self.reference_car.position.x) - 2
@@ -334,12 +334,12 @@ class HighwaySimulator:
                     self.all_obstacles.remove(obstacle)
 
                     # TODO: remove after testing
-                    rem_count += 1
+                    # rem_count += 1
             # TODO: check if only appropriate obs are being removed
             # TEST: see if we are removing more than we should
-            assert len(self.scripted_agents) >= 3
-            # TEST: check if remove() deletes more than it should
-            assert len(self.scripted_agents) == obs_pre_count-rem_count
+            # assert len(self.scripted_agents) >= 3
+            # # TEST: check if remove() deletes more than it should
+            # assert len(self.scripted_agents) == obs_pre_count-rem_count
 
         # # generate new obstacles
         # if self.inf_obstacles:
