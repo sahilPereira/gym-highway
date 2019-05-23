@@ -20,8 +20,8 @@ from baselines.common.cmd_util import (common_arg_parser, make_env,
                                        make_vec_env, parse_unknown_args)
 from baselines.common.tf_util import get_session
 from maddpg.trainer.maddpg import MADDPGAgentTrainer
-# from maddpg.trainer.maddpg_learner import learn
-from maddpg.trainer.ma_ddpg import learn
+from maddpg.trainer.maddpg_learner import learn
+# from maddpg.trainer.ma_ddpg import learn
 from models.utils import (activation_str_function, create_results_dir,
                           parse_cmdline_kwargs, save_configs)
 
@@ -44,7 +44,8 @@ def parse_args():
     parser.add_argument('--env', help='environment ID', type=str, default=Config.ma_c_env_id)
     parser.add_argument('--seed', help='RNG seed', type=int, default=None)
     parser.add_argument('--alg', help='Algorithm', type=str, default='maddpg')
-    parser.add_argument('--network', help='network type (mlp, cnn, lstm, cnn_lstm, conv_only)', default=None)
+    parser.add_argument('--scenario', help='Scenario', type=str, default='simple_spread')
+    # parser.add_argument('--network', help='network type (mlp, cnn, lstm, cnn_lstm, conv_only)', default=None)
     parser.add_argument('--num_timesteps', type=float, default=1e6)
     parser.add_argument('--num_env', help='Number of environment copies being run in parallel', default=Config.num_workers, type=int)
     parser.add_argument("--num_agents", type=int, default=1, help="number of total agents")
@@ -69,6 +70,22 @@ def make_env_config(arglist, benchmark=False):
     # return multiagent environment config
     return {'world_config':world_config, 'num_agents':arglist.num_agents, 'shared_reward':False}
 
+def make_env(scenario_name, arglist, benchmark=False):
+    # return {'scenario_name':scenario_name}
+    from gym_highway.multiagent_envs.multiagent.environment import MultiAgentEnv
+    import gym_highway.multiagent_envs.multiagent.scenarios as scenarios
+
+    # load scenario from script
+    scenario = scenarios.load(scenario_name + ".py").Scenario()
+    # create world
+    world = scenario.make_world()
+    # create multiagent environment
+    if benchmark:
+        env = MultiAgentEnv(world, scenario.reset_world, scenario.reward, scenario.observation, scenario.benchmark_data)
+    else:
+        env = MultiAgentEnv(world, scenario.reset_world, scenario.reward, scenario.observation)
+    return env
+
 def get_trainers(env, num_adversaries, obs_shape_n, arglist):
     trainers = []
     model = mlp_model
@@ -84,7 +101,7 @@ def get_trainers(env, num_adversaries, obs_shape_n, arglist):
     return trainers
 
 def train(args, extra_args):
-    env_type, env_id = get_env_type(args.env)
+    # env_type, env_id = get_env_type(args.env)
     # print('env_type: {}'.format(env_type))
 
     total_timesteps = int(args.num_timesteps)
@@ -96,15 +113,16 @@ def train(args, extra_args):
     # alg_kwargs = get_learn_function_defaults(args.alg, env_type)
     alg_kwargs.update(extra_args)
 
-    env = build_env(args)
+    # env = build_env(args)
+    env = make_env(args.scenario, args)
 
-    if args.network:
-        alg_kwargs['network'] = args.network
-    else:
-        if alg_kwargs.get('network') is None:
-            alg_kwargs['network'] = get_default_network(env_type)
+    # if args.network:
+    #     alg_kwargs['network'] = args.network
+    # else:
+    #     if alg_kwargs.get('network') is None:
+    #         alg_kwargs['network'] = get_default_network(env_type)
 
-    print('Training {} on {}:{} with arguments \n{}'.format(args.alg, env_type, env_id, alg_kwargs))
+    # print('Training {} on {}:{} with arguments \n{}'.format(args.alg, env_type, env_id, alg_kwargs))
 
     model = learn(
         env=env,
@@ -358,10 +376,11 @@ if __name__ == '__main__':
         rank = MPI.COMM_WORLD.Get_rank()
 
     # register the multi-agent env using the proper world and scenario settings
-    if args.continuous:
-        register_env(Config.ma_c_env_id, Config.ma_c_env_entry_point, make_env_config(args))
-    else:
-        register_env(Config.ma_env_id, Config.ma_env_entry_point, make_env_config(args))
+    # if args.continuous:
+    #     register_env(Config.ma_c_env_id, Config.ma_c_env_entry_point, make_env_config(args))
+    # else:
+    #     register_env(Config.ma_env_id, Config.ma_env_entry_point, make_env_config(args))
+    # register_env(args.env, 'gym_highway.multiagent_envs.multiagent:MultiAgentEnv', make_env("simple_spread", args))
 
     model, env = train(args, extra_args)
     env.close()

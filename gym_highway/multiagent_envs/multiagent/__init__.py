@@ -1,4 +1,5 @@
 from gym.envs.registration import register
+from gym_highway.multiagent_envs.multiagent.environment import MultiAgentEnv
 
 # Multiagent envs
 # ----------------------------------------

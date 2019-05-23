@@ -2,7 +2,7 @@ import gym
 from gym import spaces
 from gym.envs.registration import EnvSpec
 import numpy as np
-from multiagent.multi_discrete import MultiDiscrete
+from gym_highway.multiagent_envs.multiagent.multi_discrete import MultiDiscrete
 
 # environment for all agents in the multiagent world
 # currently code assumes that no agents will be created/destroyed at runtime!
@@ -18,7 +18,7 @@ class MultiAgentEnv(gym.Env):
         self.world = world
         self.agents = self.world.policy_agents
         # set required vectorized gym env property
-        self.n = len(world.policy_agents)
+        self.n = len(self.world.policy_agents)
         # scenario callbacks
         self.reset_callback = reset_callback
         self.reward_callback = reward_callback
@@ -30,9 +30,9 @@ class MultiAgentEnv(gym.Env):
         # if true, action is a number 0...N, otherwise action is a one-hot N-dimensional vector
         self.discrete_action_input = False
         # if true, even the action is continuous, action will be performed discretely
-        self.force_discrete_action = world.discrete_action if hasattr(world, 'discrete_action') else False
+        self.force_discrete_action = self.world.discrete_action if hasattr(self.world, 'discrete_action') else False
         # if true, every agent has the same reward
-        self.shared_reward = world.collaborative if hasattr(world, 'collaborative') else False
+        self.shared_reward = self.world.collaborative if hasattr(self.world, 'collaborative') else False
         self.time = 0
 
         # configure spaces
@@ -42,16 +42,16 @@ class MultiAgentEnv(gym.Env):
             total_action_space = []
             # physical action space
             if self.discrete_action_space:
-                u_action_space = spaces.Discrete(world.dim_p * 2 + 1)
+                u_action_space = spaces.Discrete(self.world.dim_p * 2 + 1)
             else:
-                u_action_space = spaces.Box(low=-agent.u_range, high=+agent.u_range, shape=(world.dim_p,), dtype=np.float32)
+                u_action_space = spaces.Box(low=-agent.u_range, high=+agent.u_range, shape=(self.world.dim_p,), dtype=np.float32)
             if agent.movable:
                 total_action_space.append(u_action_space)
             # communication action space
             if self.discrete_action_space:
-                c_action_space = spaces.Discrete(world.dim_c)
+                c_action_space = spaces.Discrete(self.world.dim_c)
             else:
-                c_action_space = spaces.Box(low=0.0, high=1.0, shape=(world.dim_c,), dtype=np.float32)
+                c_action_space = spaces.Box(low=0.0, high=1.0, shape=(self.world.dim_c,), dtype=np.float32)
             if not agent.silent:
                 total_action_space.append(c_action_space)
             # total action space
@@ -65,7 +65,7 @@ class MultiAgentEnv(gym.Env):
             else:
                 self.action_space.append(total_action_space[0])
             # observation space
-            obs_dim = len(observation_callback(agent, self.world))
+            obs_dim = len(self.observation_callback(agent, self.world))
             self.observation_space.append(spaces.Box(low=-np.inf, high=+np.inf, shape=(obs_dim,), dtype=np.float32))
             agent.action.c = np.zeros(self.world.dim_c)
 
@@ -217,14 +217,14 @@ class MultiAgentEnv(gym.Env):
             if self.viewers[i] is None:
                 # import rendering only if we need it (and don't import for headless machines)
                 #from gym.envs.classic_control import rendering
-                from multiagent import rendering
+                from gym_highway.multiagent_envs.multiagent import rendering
                 self.viewers[i] = rendering.Viewer(700,700)
 
         # create rendering geometry
         if self.render_geoms is None:
             # import rendering only if we need it (and don't import for headless machines)
             #from gym.envs.classic_control import rendering
-            from multiagent import rendering
+            from gym_highway.multiagent_envs.multiagent import rendering
             self.render_geoms = []
             self.render_geoms_xform = []
             for entity in self.world.entities:
@@ -246,7 +246,7 @@ class MultiAgentEnv(gym.Env):
 
         results = []
         for i in range(len(self.viewers)):
-            from multiagent import rendering
+            from gym_highway.multiagent_envs.multiagent import rendering
             # update bounds to center around agent
             cam_range = 1
             if self.shared_viewer:

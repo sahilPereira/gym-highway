@@ -109,7 +109,9 @@ def learn(env,
     
     set_global_seeds(seed)
 
-    continuous_ctrl = not isinstance(env.action_space, spaces.Discrete)
+    continuous_ctrl = not isinstance(env.action_space[0], spaces.Discrete)
+    print("Action Type Continuous: ", continuous_ctrl)
+
     nb_actions = env.action_space[0].shape[-1] if continuous_ctrl else env.action_space[0].n
 
     # update training parameters
@@ -163,13 +165,14 @@ def learn(env,
             U.load_state(load_path)
 
         obs_n = env.reset()
-        nenvs = obs_n.shape[0]
+        nenvs = 1
+        # nenvs = obs_n.shape[0]
         # ensure the shape of obs is consistent
-        assert obs_n.shape == (nenvs, num_agents, obs_n.shape[-1])
+        # assert obs_n.shape == (nenvs, num_agents, obs_n.shape[-1])
 
         # 8. initialize metric tracking parameters
-        episode_reward = np.zeros((nenvs, len(trainers)), dtype = np.float32) #vector
-        episode_step = np.zeros(nenvs, dtype = int) # vector
+        episode_reward = np.zeros(len(trainers), dtype = np.float32) #vector
+        episode_step = np.zeros(1, dtype = int) # vector
         episodes = 0 #scalar
         t = 0 # scalar
         epoch = 0
@@ -177,7 +180,7 @@ def learn(env,
         start_time = time.time()
 
         epoch_episode_rewards = np.zeros(len(trainers), dtype = np.float32)
-        epoch_episode_steps = np.zeros(nenvs, dtype = int)
+        epoch_episode_steps = np.zeros(1, dtype = int)
         epoch_actions = 0.0
         epoch_qs = []
         epoch_episodes = 0
@@ -194,6 +197,7 @@ def learn(env,
         saver = tf.train.Saver()
         episode_rewards_history = deque(maxlen=100)
         episode_steps_history = deque(maxlen=100)
+        episode_agent_rewards_history = [deque(maxlen=100) for _ in range(len(trainers))]
 
         # 9. nested training loop
         print('Starting iterations...')
@@ -202,48 +206,52 @@ def learn(env,
 
                 # 7. reset agents and envs
                 # NOTE: since we dont have action and param noise, no agent.reset() required here
+                obs_n = env.reset()
+                
+                # for d in range(len(obs_n)):
+                epoch_episode_rewards += episode_reward
+                # keep track of individual agent reward history
+                for i in range(num_agents):
+                    episode_agent_rewards_history[i].append(episode_reward[i])
+                episode_rewards_history.append(sum(episode_reward))
+                epoch_episode_steps += episode_step
+                episode_steps_history.append(episode_step)
+                episode_reward = np.zeros(len(trainers), dtype = np.float32)
+                episode_step = 0
                  
                 # Perform rollouts.
                 for t_rollout in range(nb_rollout_steps):
                     # Predict next action.
-                    actions_n = []
-                    for i in range(nenvs):
+                    # actions_n = []
+                    # for i in range(nenvs):
                         # get actions for all agents in current env
-                        actions_n.append([agent.action(obs) for agent, obs in zip(trainers,obs_n[i])])
+                    actions_n = [agent.action(obs) for agent, obs in zip(trainers,obs_n)]
                         
                     # confirm actions_n is nenvs x num_agents x len(Action)
-                    assert np.array(actions_n).shape == (nenvs, num_agents, nb_actions)
+                    # assert np.array(actions_n).shape == (nenvs, num_agents, nb_actions)
                     
                     # environment step
                     new_obs_n, rew_n, done_n, info_n = env.step(actions_n)
 
                     # sum of rewards for each env
-                    episode_reward += [r for r in rew_n]
+                    # episode_reward += [r for r in rew_n]
+                    episode_reward += rew_n
                     episode_step += 1
 
                     # Book-keeping
                     for i, agent in enumerate(trainers):
-                        for b in range(nenvs):
+                        # for b in range(nenvs):
                             # save experience from all envs for each agent
-                            agent.experience(obs_n[b][i], actions_n[b][i], rew_n[b][i], new_obs_n[b][i], done_n[b][i], None)
+                        agent.experience(obs_n[i], actions_n[i], rew_n[i], new_obs_n[i], done_n[i], None)
                     obs_n = new_obs_n
 
-                    for d in range(len(done_n)):
-                        if any(done_n[d]):
-                            # Episode done.
-                            epoch_episode_rewards += episode_reward[d]
-                            episode_rewards_history.append(sum(episode_reward[d]))
-                            epoch_episode_steps[d] += episode_step[d]
-                            episode_steps_history.append(episode_step[d])
-                            episode_reward[d] = np.zeros(len(trainers), dtype = np.float32)
-                            episode_step[d] = 0
-                            epoch_episodes += 1
-                            episodes += 1
-                            # if nenvs == 1:
-                            #     agent.reset()
-                    
+                    time.sleep(0.1)
+                    env.render()
+
                     # update timestep
                     t += 1
+                epoch_episodes += 1
+                episodes += 1
                 
                 # Train.
                 epoch_actor_losses = []
@@ -255,20 +263,28 @@ def learn(env,
                         agent.preupdate()
                         loss = agent.update(trainers, t)
                         # continue if there is no loss computed
-                        if not loss:
+                        if loss is None:
                             continue
 
                         # get all the loss metrics for this agent
                         lossvals = [np.mean(data, axis=0) if isinstance(data, list) else data for data in loss]
                         # add the metrics to respective queue
                         for (lossval, lossname) in zip(lossvals, agent.loss_names):
-                            loss_metrics[lossname].append(lossval)
+                            if lossval is not None:
+                                loss_metrics[lossname].append(lossval)
+                            else:
+                                print("{} is empty: {}".format(lossname, lossval))
                 
                 # TODO: implement evaluate logic (not included here)
 
             # 10. logging metrics
             duration = time.time() - start_time
             combined_stats = {}
+            for i, agent in enumerate(trainers):
+                # agent specific rollout metrics
+                combined_stats["{}ro/ag{}_return".format(Config.tensorboard_rootdir,i)] = epoch_episode_rewards[i] / float(episodes)
+                combined_stats["{}ro/ag{}_return_history".format(Config.tensorboard_rootdir,i)] = np.mean(episode_agent_rewards_history[i])
+
             combined_stats[Config.tensorboard_rootdir+'ro/return'] = np.mean(epoch_episode_rewards) / float(episodes) # average return of agents over episodes
             combined_stats[Config.tensorboard_rootdir+'ro/return_history'] = np.mean(episode_rewards_history)
             combined_stats[Config.tensorboard_rootdir+'ro/episode_steps'] = np.mean(epoch_episode_steps) / float(episodes) # average steps of agents over episodes
