@@ -194,6 +194,7 @@ def learn(env,
         saver = tf.train.Saver()
         episode_rewards_history = deque(maxlen=100)
         episode_steps_history = deque(maxlen=100)
+        episode_agent_rewards_history = [deque(maxlen=100) for _ in range(len(trainers))]
 
         # 9. nested training loop
         print('Starting iterations...')
@@ -232,11 +233,19 @@ def learn(env,
                         if any(done_n[d]):
                             # Episode done.
                             epoch_episode_rewards += episode_reward[d]
+                            # keep track of individual agent reward history
+                            for i in range(num_agents):
+                                episode_agent_rewards_history[i].append(episode_reward[d][i])
+                            # track combined reward history of all agents
                             episode_rewards_history.append(sum(episode_reward[d]))
+                            # episode steps over all runs
                             epoch_episode_steps[d] += episode_step[d]
+                            # episode steps for last 100 runs
                             episode_steps_history.append(episode_step[d])
+                            # reset env specific list for next run
                             episode_reward[d] = np.zeros(len(trainers), dtype = np.float32)
                             episode_step[d] = 0
+                            # increment counters
                             epoch_episodes += 1
                             episodes += 1
                             # if nenvs == 1:
@@ -255,20 +264,32 @@ def learn(env,
                         agent.preupdate()
                         loss = agent.update(trainers, t)
                         # continue if there is no loss computed
-                        if not loss:
+                        if loss is None:
                             continue
 
+                        # Test for Nan and Inf vals
+                        if np.isnan(loss).any():
+                            print("Loss contains Nan: ", loss)
+                        if np.isinf(loss).any():
+                            print("Loss contains Inf: ", loss)
+
                         # get all the loss metrics for this agent
-                        lossvals = [np.mean(data, axis=0) if isinstance(data, list) else data for data in loss]
+                        lossvals = [np.mean(data) if isinstance(data, list) else data for data in loss]
                         # add the metrics to respective queue
                         for (lossval, lossname) in zip(lossvals, agent.loss_names):
-                            loss_metrics[lossname].append(lossval)
-                
-                # TODO: implement evaluate logic (not included here)
+                            if np.isnan(lossval) or np.isinf(lossval):
+                                print("Lossval: {} is not valid: {}".format(lossname, lossval))
+                            else:
+                                loss_metrics[lossname].append(lossval)
 
             # 10. logging metrics
             duration = time.time() - start_time
             combined_stats = {}
+            for i, agent in enumerate(trainers):
+                # agent specific rollout metrics
+                combined_stats["{}ro/ag{}_return".format(Config.tensorboard_rootdir,i)] = epoch_episode_rewards[i] / float(episodes)
+                combined_stats["{}ro/ag{}_return_history".format(Config.tensorboard_rootdir,i)] = np.mean(episode_agent_rewards_history[i])
+
             combined_stats[Config.tensorboard_rootdir+'ro/return'] = np.mean(epoch_episode_rewards) / float(episodes) # average return of agents over episodes
             combined_stats[Config.tensorboard_rootdir+'ro/return_history'] = np.mean(episode_rewards_history)
             combined_stats[Config.tensorboard_rootdir+'ro/episode_steps'] = np.mean(epoch_episode_steps) / float(episodes) # average steps of agents over episodes
