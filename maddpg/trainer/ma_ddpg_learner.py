@@ -88,20 +88,9 @@ class MADDPG(object):
         assert continuous_ctrl
 
         # Multi-agent inputs
-        # self.obs0 = []
-        # self.obs1 = []
         self.actions = []
-        # self.norm_obs0_ph = []
-        # self.norm_obs1_ph = []
-
         self.obs0 = tf.placeholder(tf.float32, shape=(self.num_agents, None,) + obs_space_n[self.agent_index].shape, name="obs0")
         self.obs1 = tf.placeholder(tf.float32, shape=(self.num_agents, None,) + obs_space_n[self.agent_index].shape, name="obs1")
-        
-        # if continuous_ctrl:
-        #     self.actions = tf.placeholder(tf.float32, shape=(self.num_agents, None,) + act_space_n[self.agent_index].shape, name="action")
-        # else:
-        #     act_pdtype_n = [make_pdtype(act_space) for act_space in act_space_n]
-        #     self.actions = [act_pdtype_n[i].sample_placeholder([None], name="action"+str(i)) for i in range(len(act_space_n))]
 
         # this is required to reshape obs and actions for concatenation
         obs_shape_list = [self.num_agents] + list(obs_space_n[self.agent_index].shape)
@@ -110,21 +99,11 @@ class MADDPG(object):
         self.act_shape_prod = np.prod(act_shape_list)
 
         for i in range(self.num_agents):
-            # each obs in obs0,obs1 contains info about ego agent and relative pos/vel of other agents
-            # self.obs0.append(tf.placeholder(tf.float32, shape=[None] + list(obs_space_n[i].shape), name="obs0_"+str(i)))
-            # self.obs1.append(tf.placeholder(tf.float32, shape=[None] + list(obs_space_n[i].shape), name="obs1_"+str(i)))
-
             if continuous_ctrl:
                 self.actions.append(tf.placeholder(tf.float32, shape=[None] + list(act_space_n[i].shape), name="action"+str(i)))
             else:
                 self.actions.append(make_pdtype(act_space_n[i]).sample_placeholder([None], name="action"+str(i)))
-            
-            # self.norm_obs0_ph.append(tf.placeholder(tf.float32, shape=[None] + list(obs_space_n[i].shape), name="norm_obs0_"+str(i)))
-            # self.norm_obs1_ph.append(tf.placeholder(tf.float32, shape=[None] + list(obs_space_n[i].shape), name="norm_obs1_"+str(i)))
         
-        # self.norm_obs0_ph = tf.placeholder(tf.float32, shape=[self.num_agents, None] + list(obs_space_n[self.agent_index].shape), name="norm_obs0")
-        # self.norm_obs1_ph = tf.placeholder(tf.float32, shape=[self.num_agents, None] + list(obs_space_n[self.agent_index].shape), name="norm_obs1")
-
         # we only provide single agent inputs for these placeholders
         self.terminals1 = tf.placeholder(tf.float32, shape=(None, 1), name='terminals1')
         self.rewards = tf.placeholder(tf.float32, shape=(None, 1), name='rewards')
@@ -201,8 +180,10 @@ class MADDPG(object):
 
         # Create networks and core TF parts that are shared across setup parts.
         # Each agents gets its own observation
-        self.actor_tf = actor(normalized_act_obs0[self.agent_index])
-        self.target_actor_tf = target_actor(normalized_act_obs1[self.agent_index])
+        # self.actor_tf = actor(normalized_act_obs0[self.agent_index])
+        # self.target_actor_tf = target_actor(normalized_act_obs1[self.agent_index])
+        self.actor_tf = actor(normalized_obs0_flat)
+        self.target_actor_tf = target_actor(normalized_obs1_flat)
 
         # Critic gets all observations
         self.normalized_critic_tf = critic(normalized_obs0_flat, actions_t_flat)
@@ -229,7 +210,8 @@ class MADDPG(object):
         # Set up parts.
         if self.param_noise is not None:
             # param noise is added to actor; hence obs for current agent is required
-            self.setup_param_noise(normalized_act_obs0[self.agent_index])
+            # self.setup_param_noise(normalized_act_obs0[self.agent_index])
+            self.setup_param_noise(normalized_obs0_flat)
         self.setup_actor_optimizer()
         self.setup_critic_optimizer()
         if self.normalize_returns and self.enable_popart:
