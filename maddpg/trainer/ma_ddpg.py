@@ -51,6 +51,7 @@ def get_noise(noise_type, nb_actions):
                 raise RuntimeError('unknown noise type "{}"'.format(current_noise_type))
     return action_noise, param_noise
 
+# Modified for single agent runs for the particle environments
 def learn(network, env,
           seed=None,
           total_timesteps=None,
@@ -86,7 +87,7 @@ def learn(network, env,
     set_global_seeds(seed)
 
     continuous_ctrl = not isinstance(env.action_space[0], spaces.Discrete)
-    assert continuous_ctrl
+    # assert continuous_ctrl
     
     nb_actions = env.action_space[0].shape[-1] if continuous_ctrl else env.action_space[0].n
     
@@ -168,10 +169,11 @@ def learn(network, env,
     obs_n = env.reset()
     if eval_env is not None:
         eval_obs = eval_env.reset()
-    nenvs = obs_n.shape[0]
+    # nenvs = obs_n.shape[0]
+    nenvs = 1
 
     # initialize metric tracking parameters
-    episode_reward = np.zeros((nenvs, len(trainers)), dtype = np.float32) #vector
+    episode_reward = np.zeros(len(trainers), dtype = np.float32) #vector
     episode_step = np.zeros(nenvs, dtype = int) # vector
     episodes = 0 #scalar
     t = 0 # scalar
@@ -192,82 +194,75 @@ def learn(network, env,
     print('Starting iterations...')
     for epoch in range(nb_epochs):
         for cycle in range(nb_epoch_cycles):
-            # Perform rollouts.
+            
+            obs_n = env.reset()
+            
+            # Episode done.
+            epoch_episode_rewards += episode_reward
+            # keep track of individual agent reward history
+            for i in range(num_agents):
+                episode_agent_rewards_history[i].append(episode_reward[i])
+            # track combined reward history of all agents
+            episode_rewards_history.append(sum(episode_reward))
+            # episode steps over all runs
+            epoch_episode_steps += episode_step
+            # episode steps for last 100 runs
+            episode_steps_history.append(episode_step)
+            # reset list for next run
+            episode_reward = np.zeros(len(trainers), dtype = np.float32)
+            episode_step = 0
+
+            if nenvs == 1:
+                for agent in trainers:
+                    agent.reset()
+            
+            # This is redundant, since we will always use 1 env for particle envs for now
             if nenvs > 1:
                 # if simulating multiple envs in parallel, impossible to reset agent at the end of the episode in each
                 # of the environments, so resetting here instead
                 for agent in trainers:
                     agent.reset()
+            
+            # Perform rollouts.
             for t_rollout in range(nb_rollout_steps):
                 actions_n = []
-                q_n = np.zeros(len(trainers), dtype = np.float32)
-                for i in range(nenvs):
-                    # create n copies of full obs where n = num agents; memory is not an issue for this simulation
-                    rep_obs = np.stack([obs_n[i] for _ in range(len(trainers))])
-                    # Predict next actions and q vals for all agents in current env
-                    # call step() with each agent and full observation; only get action "[0]" from this call
-                    action_q_list = [agent.step(obs, apply_noise=True, compute_Q=False)[0] for agent, obs in zip(trainers, rep_obs)]
-                    # store actions and q vals in respective lists
-                    actions_n.append(action_q_list)
-                    # we care about the overall q value for each agent
-                    # print("action_q_list: ", action_q_list)
-                    # print("q_n: ", np.array(action_q_list)[:,1])
-                    # q_n += np.array(action_q_list)[:,1]
+
+                rep_obs = np.stack([obs_n for _ in range(num_agents)])
+                actions_n = [agent.step(obs, apply_noise=True, compute_Q=False)[0] for agent, obs in zip(trainers, rep_obs)]
                 
                 # confirm actions_n is nenvs x num_agents x len(Action)
                 # print("actions_n: ", actions_n)
                 # print("actions_n: ", actions_n[0][1])
                 # print((len(actions_n),len(actions_n[0]),len(actions_n[0][0])))
                 # print((nenvs, num_agents, nb_actions))
-                assert (len(actions_n),len(actions_n[0]),len(actions_n[0][0])) == (nenvs, num_agents, nb_actions)
+                # assert (len(actions_n),len(actions_n[0]),len(actions_n[0][0])) == (nenvs, num_agents, nb_actions)
 
                 # environment step
                 new_obs_n, rew_n, done_n, info_n = env.step(actions_n)
 
                 # sum of rewards for each env
-                episode_reward += [r for r in rew_n]
+                episode_reward += rew_n
                 episode_step += 1
-                # epoch_qs += [q / float(nenvs) for q in q_n]
 
                 # Book-keeping
                 for i, agent in enumerate(trainers):
-                    # for b in range(nenvs):
-                    #     # save experience from all envs for each agent
-                    #     agent.store_transition(obs_n[b][i], actions_n[b][i], rew_n[b][i], new_obs_n[b][i], done_n[b][i], None)
                     agent.store_transition(obs_n, actions_n, rew_n, new_obs_n, done_n)
                 obs_n = new_obs_n
 
-                # looping over nenvs
-                for d in range(len(done_n)):
-                    if any(done_n[d]):
-                        # Episode done.
-                        epoch_episode_rewards += episode_reward[d]
-                        # keep track of individual agent reward history
-                        for i in range(num_agents):
-                            episode_agent_rewards_history[i].append(episode_reward[d][i])
-                        # track combined reward history of all agents
-                        episode_rewards_history.append(sum(episode_reward[d]))
-                        # episode steps over all runs
-                        epoch_episode_steps[d] += episode_step[d]
-                        # episode steps for last 100 runs
-                        episode_steps_history.append(episode_step[d])
-                        # reset env specific list for next run
-                        episode_reward[d] = np.zeros(len(trainers), dtype = np.float32)
-                        episode_step[d] = 0
-                        # increment counters
-                        epoch_episodes += 1
-                        episodes += 1
-                        if nenvs == 1:
-                            for agent in trainers:
-                                agent.reset()
+                # time.sleep(0.1)
+                # env.render()
                 
                 # update timestep
                 t += 1
+            
+            # increment counters
+            epoch_episodes += 1
+            episodes += 1
 
             # Train.
-            epoch_actor_losses = [[] for _ in range(len(trainers))]
-            epoch_critic_losses = [[] for _ in range(len(trainers))]
-            epoch_adaptive_distances = [[] for _ in range(len(trainers))]
+            epoch_actor_losses = [[] for _ in range(num_agents)]
+            epoch_critic_losses = [[] for _ in range(num_agents)]
+            epoch_adaptive_distances = [[] for _ in range(num_agents)]
 
             for t_train in range(nb_train_steps):
                 for i, agent in enumerate(trainers):
