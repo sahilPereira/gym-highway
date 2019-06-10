@@ -71,7 +71,7 @@ class Scenario(BaseScenario):
         for agent in world.agents:
             # if in a collision assign large negative reward
             if collisions[agent.id]:
-                agent_rewards[agent.id] = -250.0
+                agent_rewards[agent.id] = -5.0
             else:
                 # reward of 0.0 for going max speed, negative reward otherwise
                 agent_rewards[agent.id] = (agent.velocity.x / agent.max_velocity) - 1.0

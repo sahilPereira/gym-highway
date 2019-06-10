@@ -371,8 +371,7 @@ class MADDPG(object):
             action += noise
         action = np.clip(action, self.action_range[0], self.action_range[1])
 
-
-        return action[0], q, None, None
+        return action[0], q
     
     # TODO: test this
     # Computing this every time step may slow things
@@ -409,6 +408,12 @@ class MADDPG(object):
             # provide full obs for obs_rms update
             self.obs_rms.update(np.array([obs0[b]]))
         return
+
+    def generate_index(self):
+        return self.memory.generate_index(self.batch_size)
+    
+    def sample_batch(self, replay_sample_index):
+        return self.memory.sample(batch_size=self.batch_size, index=replay_sample_index)
 
     def train(self, agents):
         # generate indices to access batches from all agents

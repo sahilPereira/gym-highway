@@ -417,7 +417,7 @@ class HighwaySimulator:
 
                 if (obs_collision_val + agent_collision_val) > 0:
                     collisions[agent.id] = True
-                    self.is_done[agent.id] = True
+                    # self.is_done[agent.id] = True
 
         return collisions
 

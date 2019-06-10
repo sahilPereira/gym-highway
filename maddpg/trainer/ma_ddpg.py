@@ -198,6 +198,7 @@ def learn(network, env,
                 # of the environments, so resetting here instead
                 for agent in trainers:
                     agent.reset()
+            obs_n = env.reset()
             for t_rollout in range(nb_rollout_steps):
                 actions_n = []
                 q_n = np.zeros(len(trainers), dtype = np.float32)
