@@ -132,7 +132,8 @@ class Scenario(BaseScenario):
                 other_pos[placement_idx] = list(obj.raw_position - agent.raw_position)
                 other_vel[placement_idx] = list(obj.velocity - agent.velocity)
 
-            # get positions and velocities of all other agents in this agent's reference frame
+            # get positions, velocities and communication of all other agents in this agent's reference frame
+            comm = [None]*(len(world.agents)-1)
             for other_agent in world.agents:
                 if other_agent is agent: continue
                 
@@ -142,11 +143,12 @@ class Scenario(BaseScenario):
                 
                 other_pos[placement_idx] = list(other_agent.raw_position - agent.raw_position)
                 other_vel[placement_idx] = list(other_agent.velocity - agent.velocity)
+                comm[placement_idx] = list((other_agent.acceleration, other_agent.steering))
             
-            ob_list = [(agent.acceleration, agent.steering)] + [agent.raw_position] + other_pos + [agent.velocity] + other_vel
+            ob_list = [(agent.acceleration, agent.steering)] + [agent.raw_position] + other_pos + [agent.velocity] + other_vel + comm
             
             # ob_list should contain accel/steering/pos/vel of current agent and pos/vel of all other agents
-            assert len(ob_list) == len(other_pos)+len(other_vel)+3
+            assert len(ob_list) == len(other_pos)+len(other_vel)+len(comm)+3
             obv = np.array(ob_list, dtype=np.float32).flatten()
 
             # ensure consistent order
