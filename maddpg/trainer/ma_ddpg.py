@@ -108,36 +108,36 @@ def learn(network, env,
 
     sess = U.get_session()
     # create one obs_rms used by all agents
-    obs_shape = (num_agents,)+env.observation_space[0].shape
+    obs_shape = (1,)+env.observation_space[0].shape
     with tf.variable_scope('obs_rms'):
         obs_rms = RunningMeanStd(shape=obs_shape)
     trainers = []
-    for i in range(num_agents):
-        # get action shape for an agent
-        action_shape = env.action_space[i].shape if continuous_ctrl else (nb_actions, )
+    
+    # TODO: will have to modify the critic and actor to work with batches for multiple agents
+    critic = Critic(name="critic", network=network, **network_kwargs)
+    actor = Actor(nb_actions, name="actor", network=network, **network_kwargs)
 
-        # TODO: will have to modify the critic and actor to work with batches for multiple agents
-        memory = Memory(limit=int(1e6), action_shape=action_shape, observation_shape=env.observation_space[i].shape)
-        critic = Critic(name="critic_%d" % i, network=network, **network_kwargs)
-        actor = Actor(nb_actions, name="actor_%d" % i, network=network, **network_kwargs)
+    # get action and parameter noise type
+    action_noise, param_noise = get_noise(noise_type, nb_actions)
+    # TODO: remove after testing
+    assert param_noise is not None
 
-        # get action and parameter noise type
-        action_noise, param_noise = get_noise(noise_type, nb_actions)
+    # we still use multiple trainers to handle different perspective in the observation
+    # for i in range(num_agents):
+    # get action shape for an agent
+    action_shape = env.action_space[0].shape if continuous_ctrl else (nb_actions, )
+    memory = Memory(limit=int(1e6), action_shape=action_shape, observation_shape=env.observation_space[0].shape)
 
-        # TODO: remove after testing
-        assert param_noise is not None
-
-        # TODO: need to update the placeholders in MADDPG based off of ddpg_learner
-        # replay buffer, actor and critic are defined for each agent in trainers
-        agent = MADDPG("agent_%d" % i, actor, critic, memory, env.observation_space, env.action_space, i, obs_rms,
-            gamma=gamma, tau=tau, normalize_returns=normalize_returns, normalize_observations=normalize_observations,
-            batch_size=batch_size, action_noise=action_noise, param_noise=param_noise, critic_l2_reg=critic_l2_reg,
-            actor_lr=actor_lr, critic_lr=critic_lr, enable_popart=popart, clip_norm=clip_norm,
-            reward_scale=reward_scale)
-        
-        # Prepare agent
-        agent.initialize(sess)
-        trainers.append(agent)
+    # use the same critic and actor for each agent
+    agent = MADDPG("agent", actor, critic, memory, [env.observation_space[0]], [env.action_space[0]], 0, obs_rms,
+        gamma=gamma, tau=tau, normalize_returns=normalize_returns, normalize_observations=normalize_observations,
+        batch_size=batch_size, action_noise=action_noise, param_noise=param_noise, critic_l2_reg=critic_l2_reg,
+        actor_lr=actor_lr, critic_lr=critic_lr, enable_popart=popart, clip_norm=clip_norm,
+        reward_scale=reward_scale)
+    
+    # Prepare agent
+    agent.initialize(sess)
+    trainers.append(agent)
     
     # TODO: test if this actually works
     # Test by running the trained models (num_agents>=2)
@@ -171,23 +171,23 @@ def learn(network, env,
     nenvs = obs_n.shape[0]
 
     # initialize metric tracking parameters
-    episode_reward = np.zeros((nenvs, len(trainers)), dtype = np.float32) #vector
+    episode_reward = np.zeros((nenvs, num_agents), dtype = np.float32) #vector
     episode_step = np.zeros(nenvs, dtype = int) # vector
     episodes = 0 #scalar
     t = 0 # scalar
     epoch = 0
 
     start_time = time.time()
-    epoch_episode_rewards = np.zeros(len(trainers), dtype = np.float32)
+    epoch_episode_rewards = np.zeros(num_agents, dtype = np.float32)
     epoch_episode_steps = np.zeros(nenvs, dtype = int)
     # TODO: update epoch_actions to find std between actions over time
     epoch_actions = 0.0
-    epoch_qs = np.zeros(len(trainers), dtype = np.float32)
+    epoch_qs = np.zeros(num_agents, dtype = np.float32)
     epoch_episodes = 0
 
     episode_rewards_history = deque(maxlen=100)
     episode_steps_history = deque(maxlen=100)
-    episode_agent_rewards_history = [deque(maxlen=100) for _ in range(len(trainers))]
+    episode_agent_rewards_history = [deque(maxlen=100) for _ in range(num_agents)]
 
     print('Starting iterations...')
     for epoch in range(nb_epochs):
@@ -200,25 +200,18 @@ def learn(network, env,
                     agent.reset()
             for t_rollout in range(nb_rollout_steps):
                 actions_n = []
-                q_n = np.zeros(len(trainers), dtype = np.float32)
+                # q_n = np.zeros(len(trainers), dtype = np.float32)
                 for i in range(nenvs):
                     # create n copies of full obs where n = num agents; memory is not an issue for this simulation
-                    rep_obs = np.stack([obs_n[i] for _ in range(len(trainers))])
-                    # Predict next actions and q vals for all agents in current env
+                    # rep_obs = np.stack([obs_n[i] for _ in range(len(trainers))])
+                    # Predict next actions for all agents in current env
                     # call step() with each agent and full observation; only get action "[0]" from this call
-                    action_q_list = [agent.step(obs, apply_noise=True, compute_Q=False)[0] for agent, obs in zip(trainers, rep_obs)]
+                    # need to flip observations so that we get correct action for each agent
+                    actions = [trainers[0].step(obs, apply_noise=True, compute_Q=False)[0] for obs in obs_n[i]]
                     # store actions and q vals in respective lists
-                    actions_n.append(action_q_list)
-                    # we care about the overall q value for each agent
-                    # print("action_q_list: ", action_q_list)
-                    # print("q_n: ", np.array(action_q_list)[:,1])
-                    # q_n += np.array(action_q_list)[:,1]
+                    actions_n.append(actions)
                 
                 # confirm actions_n is nenvs x num_agents x len(Action)
-                # print("actions_n: ", actions_n)
-                # print("actions_n: ", actions_n[0][1])
-                # print((len(actions_n),len(actions_n[0]),len(actions_n[0][0])))
-                # print((nenvs, num_agents, nb_actions))
                 assert (len(actions_n),len(actions_n[0]),len(actions_n[0][0])) == (nenvs, num_agents, nb_actions)
 
                 # environment step
@@ -227,14 +220,13 @@ def learn(network, env,
                 # sum of rewards for each env
                 episode_reward += [r for r in rew_n]
                 episode_step += 1
-                # epoch_qs += [q / float(nenvs) for q in q_n]
 
                 # Book-keeping
+                # need to save both agent observatinos in one memory
                 for i, agent in enumerate(trainers):
-                    # for b in range(nenvs):
-                    #     # save experience from all envs for each agent
-                    #     agent.store_transition(obs_n[b][i], actions_n[b][i], rew_n[b][i], new_obs_n[b][i], done_n[b][i], None)
-                    agent.store_transition(obs_n, actions_n, rew_n, new_obs_n, done_n)
+                    for j in range(nenvs):
+                        for k in range(len(obs_n[j])):
+                            agent.store_transition(obs_n[j][k], actions_n[j][k], rew_n[j][k], new_obs_n[j][k], done_n[j][k])
                 obs_n = new_obs_n
 
                 # looping over nenvs
@@ -270,6 +262,7 @@ def learn(network, env,
             epoch_adaptive_distances = [[] for _ in range(len(trainers))]
 
             for t_train in range(nb_train_steps):
+                # We can train once for one global policy
                 for i, agent in enumerate(trainers):
                     # Adapt param noise, if necessary.
                     if agent.memory.nb_entries >= batch_size and t_train % param_noise_adaption_interval == 0:
@@ -312,16 +305,16 @@ def learn(network, env,
         duration = time.time() - start_time
         combined_stats = {}
         # get stats for all agents
-        for i, agent in enumerate(trainers):
-            stats = agent.get_stats(trainers)
-            for k,v in stats.items():
-                combined_stats["{}st/ag{}_{}".format(Config.tensorboard_rootdir,i,k)] = v
-
+        for i in range(num_agents):
             # agent specific rollout metrics
             combined_stats["{}ro/ag{}_return".format(Config.tensorboard_rootdir,i)] = epoch_episode_rewards[i] / float(episodes)
             combined_stats["{}ro/ag{}_return_history".format(Config.tensorboard_rootdir,i)] = np.mean(episode_agent_rewards_history[i])
             # combined_stats["{}ro/ag{}_Q_mean".format(Config.tensorboard_rootdir,i)] = epoch_qs[i] / float(t)
 
+        for i, agent in enumerate(trainers):
+            stats = agent.get_stats(trainers)
+            for k,v in stats.items():
+                combined_stats["{}st/ag{}_{}".format(Config.tensorboard_rootdir,i,k)] = v
             # agent specific training metrics
             combined_stats["{}tr/ag{}_loss_actor".format(Config.tensorboard_rootdir,i)] = np.mean(epoch_actor_losses[i])
             combined_stats["{}tr/ag{}_loss_critic".format(Config.tensorboard_rootdir,i)] = np.mean(epoch_critic_losses[i])

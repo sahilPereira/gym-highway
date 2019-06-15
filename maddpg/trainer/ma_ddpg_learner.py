@@ -88,20 +88,9 @@ class MADDPG(object):
         assert continuous_ctrl
 
         # Multi-agent inputs
-        # self.obs0 = []
-        # self.obs1 = []
         self.actions = []
-        # self.norm_obs0_ph = []
-        # self.norm_obs1_ph = []
-
         self.obs0 = tf.placeholder(tf.float32, shape=(self.num_agents, None,) + obs_space_n[self.agent_index].shape, name="obs0")
         self.obs1 = tf.placeholder(tf.float32, shape=(self.num_agents, None,) + obs_space_n[self.agent_index].shape, name="obs1")
-        
-        # if continuous_ctrl:
-        #     self.actions = tf.placeholder(tf.float32, shape=(self.num_agents, None,) + act_space_n[self.agent_index].shape, name="action")
-        # else:
-        #     act_pdtype_n = [make_pdtype(act_space) for act_space in act_space_n]
-        #     self.actions = [act_pdtype_n[i].sample_placeholder([None], name="action"+str(i)) for i in range(len(act_space_n))]
 
         # this is required to reshape obs and actions for concatenation
         obs_shape_list = [self.num_agents] + list(obs_space_n[self.agent_index].shape)
@@ -110,20 +99,10 @@ class MADDPG(object):
         self.act_shape_prod = np.prod(act_shape_list)
 
         for i in range(self.num_agents):
-            # each obs in obs0,obs1 contains info about ego agent and relative pos/vel of other agents
-            # self.obs0.append(tf.placeholder(tf.float32, shape=[None] + list(obs_space_n[i].shape), name="obs0_"+str(i)))
-            # self.obs1.append(tf.placeholder(tf.float32, shape=[None] + list(obs_space_n[i].shape), name="obs1_"+str(i)))
-
             if continuous_ctrl:
                 self.actions.append(tf.placeholder(tf.float32, shape=[None] + list(act_space_n[i].shape), name="action"+str(i)))
             else:
                 self.actions.append(make_pdtype(act_space_n[i]).sample_placeholder([None], name="action"+str(i)))
-            
-            # self.norm_obs0_ph.append(tf.placeholder(tf.float32, shape=[None] + list(obs_space_n[i].shape), name="norm_obs0_"+str(i)))
-            # self.norm_obs1_ph.append(tf.placeholder(tf.float32, shape=[None] + list(obs_space_n[i].shape), name="norm_obs1_"+str(i)))
-        
-        # self.norm_obs0_ph = tf.placeholder(tf.float32, shape=[self.num_agents, None] + list(obs_space_n[self.agent_index].shape), name="norm_obs0")
-        # self.norm_obs1_ph = tf.placeholder(tf.float32, shape=[self.num_agents, None] + list(obs_space_n[self.agent_index].shape), name="norm_obs1")
 
         # we only provide single agent inputs for these placeholders
         self.terminals1 = tf.placeholder(tf.float32, shape=(None, 1), name='terminals1')
@@ -356,8 +335,6 @@ class MADDPG(object):
         else:
             actor_tf = self.actor_tf
         feed_dict = {self.obs0: U.adjust_shape(self.obs0, [obs])}
-        # feed_dict={ph: [data] for ph, data in zip(self.obs0, obs)}
-        # feed_dict = {self.obs0: [obs]}
 
         if compute_Q:
             action, q = self.sess.run([actor_tf, self.critic_with_actor_tf], feed_dict=feed_dict)
@@ -371,8 +348,7 @@ class MADDPG(object):
             action += noise
         action = np.clip(action, self.action_range[0], self.action_range[1])
 
-
-        return action[0], q, None, None
+        return action[0], q
     
     # TODO: test this
     # Computing this every time step may slow things
@@ -387,18 +363,16 @@ class MADDPG(object):
     def store_transition(self, obs0, action, reward, obs1, terminal1):
         reward *= self.reward_scale
         # print(action)
-        B = obs0.shape[0]
-        a_idx = self.agent_index
-        for b in range(B):
-            self.memory.append(obs0[b][a_idx], action[b][a_idx], reward[b][a_idx], obs1[b][a_idx], terminal1[b][a_idx])
+        # B = obs0.shape[0]
+        # a_idx = self.agent_index
+        # for b in range(B):
+        self.memory.append(obs0, action, reward, obs1, terminal1)
 
-            # NOTE: calling update for each agent is ok, since the mean and std are uneffected
-            # this is because the same obs are repeated num_agent times, which dont affect value
-            if self.normalize_observations:
-                # provide full obs for obs_rms update
-                obs0_shape = (len(obs0[b]),)+obs0[b][a_idx].shape
-                assert obs0_shape == (self.num_agents,)+obs0[b][a_idx].shape
-                self.obs_rms.update(np.array([obs0[b]]))
+        # NOTE: calling update for each agent is ok, since the mean and std are uneffected
+        # this is because the same obs are repeated num_agent times, which dont affect value
+        if self.normalize_observations:
+            # provide full obs for obs_rms update
+            self.obs_rms.update(np.array([obs0]))
     
     # TODO: not using this right now
     def update_obs_rms(self, obs0):
@@ -435,7 +409,6 @@ class MADDPG(object):
         
         # fill placeholders in obs1 with corresponding obs from each agent's replay buffer
         # self.obs1 and obs1_n are lists of size num_agents
-        act_dict={ph: data for ph, data in zip(self.actions, act_n)}
         target_act_dict={ph: data for ph, data in zip(self.actions, target_act_n)}
 
         # feed dict for target_Q calculation
@@ -480,6 +453,7 @@ class MADDPG(object):
 
         # generate feed_dict for gradient and loss computation
         feed_dict = {self.obs0: obs0_n}
+        act_dict={ph: data for ph, data in zip(self.actions, act_n)}
         feed_dict.update(act_dict)
         feed_dict.update({self.critic_target: target_Q})
 
