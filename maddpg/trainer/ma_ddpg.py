@@ -5,25 +5,25 @@ MADDPG built using DDPG from baselines
 
 import os
 import os.path as osp
+import pickle
 import time
 from collections import deque
-import pickle
+from copy import copy
 
-from maddpg.trainer.ma_ddpg_learner import MADDPG
-# from baselines.ddpg.models import Actor, Critic
-# from baselines.ddpg.memory import Memory
-from maddpg.trainer.ma_models import Actor, Critic
-from maddpg.trainer.ma_memory import Memory
-from baselines.ddpg.noise import AdaptiveParamNoiseSpec, NormalActionNoise, OrnsteinUhlenbeckActionNoise
-from baselines.common import set_global_seeds
-import baselines.common.tf_util as U
-from models import config as Config
-from gym import spaces
-import tensorflow as tf
-from baselines.common.mpi_running_mean_std import RunningMeanStd
-
-from baselines import logger
 import numpy as np
+import tensorflow as tf
+from gym import spaces
+
+import baselines.common.tf_util as U
+from baselines import logger
+from baselines.common import set_global_seeds
+from baselines.common.mpi_running_mean_std import RunningMeanStd
+from baselines.ddpg.noise import (AdaptiveParamNoiseSpec, NormalActionNoise,
+                                  OrnsteinUhlenbeckActionNoise)
+from maddpg.trainer.ma_ddpg_learner import MADDPG
+from maddpg.trainer.ma_memory import Memory
+from maddpg.trainer.ma_models import Actor, Critic
+from models import config as Config
 
 try:
     from mpi4py import MPI
@@ -112,13 +112,19 @@ def learn(network, env,
     with tf.variable_scope('obs_rms'):
         obs_rms = RunningMeanStd(shape=obs_shape)
     trainers = []
+
+    # single critic
+    critic = Critic(name="critic", network=network, **network_kwargs)
+    target_critic = copy(critic)
+    target_critic.name = 'target_critic'
+
     for i in range(num_agents):
         # get action shape for an agent
         action_shape = env.action_space[i].shape if continuous_ctrl else (nb_actions, )
 
         # TODO: will have to modify the critic and actor to work with batches for multiple agents
         memory = Memory(limit=int(1e6), action_shape=action_shape, observation_shape=env.observation_space[i].shape)
-        critic = Critic(name="critic_%d" % i, network=network, **network_kwargs)
+        # critic = Critic(name="critic_%d" % i, network=network, **network_kwargs)
         actor = Actor(nb_actions, name="actor_%d" % i, network=network, **network_kwargs)
 
         # get action and parameter noise type
@@ -129,7 +135,7 @@ def learn(network, env,
 
         # TODO: need to update the placeholders in MADDPG based off of ddpg_learner
         # replay buffer, actor and critic are defined for each agent in trainers
-        agent = MADDPG("agent_%d" % i, actor, critic, memory, env.observation_space, env.action_space, i, obs_rms,
+        agent = MADDPG("agent_%d" % i, actor, critic, target_critic, memory, env.observation_space, env.action_space, i, obs_rms,
             gamma=gamma, tau=tau, normalize_returns=normalize_returns, normalize_observations=normalize_observations,
             batch_size=batch_size, action_noise=action_noise, param_noise=param_noise, critic_l2_reg=critic_l2_reg,
             actor_lr=actor_lr, critic_lr=critic_lr, enable_popart=popart, clip_norm=clip_norm,
@@ -209,16 +215,8 @@ def learn(network, env,
                     action_q_list = [agent.step(obs, apply_noise=True, compute_Q=False)[0] for agent, obs in zip(trainers, rep_obs)]
                     # store actions and q vals in respective lists
                     actions_n.append(action_q_list)
-                    # we care about the overall q value for each agent
-                    # print("action_q_list: ", action_q_list)
-                    # print("q_n: ", np.array(action_q_list)[:,1])
-                    # q_n += np.array(action_q_list)[:,1]
                 
                 # confirm actions_n is nenvs x num_agents x len(Action)
-                # print("actions_n: ", actions_n)
-                # print("actions_n: ", actions_n[0][1])
-                # print((len(actions_n),len(actions_n[0]),len(actions_n[0][0])))
-                # print((nenvs, num_agents, nb_actions))
                 assert (len(actions_n),len(actions_n[0]),len(actions_n[0][0])) == (nenvs, num_agents, nb_actions)
 
                 # environment step
@@ -340,8 +338,6 @@ def learn(network, env,
         combined_stats[Config.tensorboard_rootdir+'to/episodes'] = episodes
         combined_stats[Config.tensorboard_rootdir+'ro/episodes'] = epoch_episodes
         combined_stats[Config.tensorboard_rootdir+'ro/std_return'] = np.std(epoch_episode_rewards)
-        # combined_stats[Config.tensorboard_rootdir+'ro/actions_mean'] = epoch_actions / float(t)
-        # combined_stats[Config.tensorboard_rootdir+'rollout/actions_std'] = np.std(epoch_actions)
         # Evaluation statistics.
         if eval_env is not None:
             combined_stats[Config.tensorboard_rootdir+'eval/return'] = eval_episode_rewards
