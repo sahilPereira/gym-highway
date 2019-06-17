@@ -51,6 +51,7 @@ def parse_args():
     parser.add_argument('--reward_scale', help='Reward scale factor. Default: 1.0', default=1.0, type=float)
     parser.add_argument('--continuous', default=False, help='Use continuous actions', action='store_true')
     parser.add_argument('--play', default=False, action='store_true')
+    parser.add_argument('--desc', help='Description', type=str, default=None)
     return parser
 
 def mlp_model(input, num_outputs, scope, reuse=False, num_units=256, rnn_cell=None):

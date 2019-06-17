@@ -114,9 +114,9 @@ def learn(network, env,
     trainers = []
 
     # single critic
-    critic = Critic(name="critic", network=network, **network_kwargs)
-    target_critic = copy(critic)
-    target_critic.name = 'target_critic'
+    # critic = Critic(name="critic", network=network, **network_kwargs)
+    # target_critic = copy(critic)
+    # target_critic.name = 'target_critic'
 
     for i in range(num_agents):
         # get action shape for an agent
@@ -124,7 +124,7 @@ def learn(network, env,
 
         # TODO: will have to modify the critic and actor to work with batches for multiple agents
         memory = Memory(limit=int(1e6), action_shape=action_shape, observation_shape=env.observation_space[i].shape)
-        # critic = Critic(name="critic_%d" % i, network=network, **network_kwargs)
+        critic = Critic(name="critic_%d" % i, network=network, **network_kwargs)
         actor = Actor(nb_actions, name="actor_%d" % i, network=network, **network_kwargs)
 
         # get action and parameter noise type
@@ -135,7 +135,7 @@ def learn(network, env,
 
         # TODO: need to update the placeholders in MADDPG based off of ddpg_learner
         # replay buffer, actor and critic are defined for each agent in trainers
-        agent = MADDPG("agent_%d" % i, actor, critic, target_critic, memory, env.observation_space, env.action_space, i, obs_rms,
+        agent = MADDPG("agent_%d" % i, actor, critic, None, memory, env.observation_space, env.action_space, i, obs_rms,
             gamma=gamma, tau=tau, normalize_returns=normalize_returns, normalize_observations=normalize_observations,
             batch_size=batch_size, action_noise=action_noise, param_noise=param_noise, critic_l2_reg=critic_l2_reg,
             actor_lr=actor_lr, critic_lr=critic_lr, enable_popart=popart, clip_norm=clip_norm,
@@ -197,6 +197,10 @@ def learn(network, env,
 
     print('Starting iterations...')
     for epoch in range(nb_epochs):
+
+        epoch_actor_losses = [[] for _ in range(len(trainers))]
+        epoch_critic_losses = [[] for _ in range(len(trainers))]
+        epoch_adaptive_distances = [[] for _ in range(len(trainers))]
         for cycle in range(nb_epoch_cycles):
             # Perform rollouts.
             if nenvs > 1:
@@ -263,12 +267,14 @@ def learn(network, env,
                 t += 1
 
             # Train.
-            epoch_actor_losses = [[] for _ in range(len(trainers))]
-            epoch_critic_losses = [[] for _ in range(len(trainers))]
-            epoch_adaptive_distances = [[] for _ in range(len(trainers))]
-
             for t_train in range(nb_train_steps):
                 for i, agent in enumerate(trainers):
+                    # alternate while training
+                    is_first_half = cycle < (nb_epoch_cycles//2)
+                    # train agent 0 in first half, agent 1 in second half of cycles
+                    if bool(i == 0) ^ bool(is_first_half):
+                        continue
+
                     # Adapt param noise, if necessary.
                     if agent.memory.nb_entries >= batch_size and t_train % param_noise_adaption_interval == 0:
                         distance = agent.adapt_param_noise(trainers)
@@ -299,6 +305,11 @@ def learn(network, env,
                             eval_episode_rewards.append(eval_episode_reward[d])
                             eval_episode_rewards_history.append(eval_episode_reward[d])
                             eval_episode_reward[d] = 0.0
+
+        epoch_actor_losses = [act_loss[-nb_train_steps:] for act_loss in epoch_actor_losses]
+        epoch_critic_losses = [critic_loss[-nb_train_steps:] for critic_loss in epoch_critic_losses]
+        min_num_dist = len(epoch_adaptive_distances[0])
+        epoch_adaptive_distances = [adp_dist[-min_num_dist:] for adp_dist in epoch_adaptive_distances]
 
         if MPI is not None:
             mpi_size = MPI.COMM_WORLD.Get_size()

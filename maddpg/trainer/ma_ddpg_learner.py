@@ -174,8 +174,10 @@ class MADDPG(object):
         target_actor = copy(actor)
         target_actor.name = 'target_actor'
         self.target_actor = target_actor
-        # target_critic = copy(critic)
-        # target_critic.name = 'target_critic'
+        # setup target critic
+        if target_critic is None:
+            target_critic = copy(critic)
+            target_critic.name = 'target_critic'
         self.target_critic = target_critic
 
         # Create networks and core TF parts that are shared across setup parts.
