@@ -270,9 +270,10 @@ def learn(network, env,
             for t_train in range(nb_train_steps):
                 for i, agent in enumerate(trainers):
                     # alternate while training
-                    is_first_half = cycle < (nb_epoch_cycles//2)
+                    # is_first_half = cycle < (nb_epoch_cycles//2)
+                    toggle = cycle % 2
                     # train agent 0 in first half, agent 1 in second half of cycles
-                    if bool(i == 0) ^ bool(is_first_half):
+                    if bool(i == 0) ^ bool(toggle):
                         continue
 
                     # Adapt param noise, if necessary.
@@ -308,7 +309,7 @@ def learn(network, env,
 
         epoch_actor_losses = [act_loss[-nb_train_steps:] for act_loss in epoch_actor_losses]
         epoch_critic_losses = [critic_loss[-nb_train_steps:] for critic_loss in epoch_critic_losses]
-        min_num_dist = len(epoch_adaptive_distances[0])
+        min_num_dist = min([len(adp_dist) for adp_dist in epoch_adaptive_distances])
         epoch_adaptive_distances = [adp_dist[-min_num_dist:] for adp_dist in epoch_adaptive_distances]
 
         if MPI is not None:
