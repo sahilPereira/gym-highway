@@ -2,6 +2,8 @@
 *.pyc
 *.txt
 *.npy
+*.ipynb
+*.sh
 .idea
 /logs
 gymenv/*
