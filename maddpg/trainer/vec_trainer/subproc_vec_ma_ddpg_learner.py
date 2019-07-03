@@ -10,7 +10,8 @@ def worker(remote, parent_remote, agent_fn_wrapper):
             cmd, data = remote.recv()
             # new functions
             if cmd == 'step':
-                action, q = agent.step(data[0], apply_noise=data[1], compute_Q=data[2])
+                obs, apply_noise, compute_Q = data
+                action, q = agent.step(obs, apply_noise=apply_noise, compute_Q=compute_Q)
                 remote.send((action, q))
             elif cmd == 'generate_index':
                 replay_sample_index = agent.generate_index()
@@ -19,7 +20,7 @@ def worker(remote, parent_remote, agent_fn_wrapper):
                 batch = agent.sample_batch(data)
                 remote.send(batch)
             elif cmd == 'store_transition':
-                obs_n, actions_n, rew_n, new_obs_n, done_n = zip(*data)
+                obs_n, actions_n, rew_n, new_obs_n, done_n = data
                 ret = agent.store_transition(obs_n, actions_n, rew_n, new_obs_n, done_n)
                 remote.send(ret)
             elif cmd == 'initialize':
@@ -29,25 +30,24 @@ def worker(remote, parent_remote, agent_fn_wrapper):
                 ret = agent.agent_initialize(data)
                 remote.send(ret)
             elif cmd == 'adapt_param_noise':
-                # TODO: update with correct parameters
-                ob, reward, done, info = agent.adapt_param_noise(data)
-                remote.send((ob, reward, done, info))
+                mean_distance = agent.adapt_param_noise(data)
+                remote.send(mean_distance)
             elif cmd == 'train':
                 # TODO: update with correct parameters
-                ob, reward, done, info = agent.train(data)
-                remote.send((ob, reward, done, info))
+                critic_loss, actor_loss = agent.train(data)
+                remote.send((critic_loss, actor_loss))
             elif cmd == 'get_stats':
                 # TODO: update with correct parameters
-                ob, reward, done, info = agent.get_stats(data)
-                remote.send((ob, reward, done, info))
+                stats = agent.get_stats(data)
+                remote.send(stats)
             elif cmd == 'save':
                 # TODO: update with correct parameters (savepath)
-                ob, reward, done, info = agent.save(data)
-                remote.send((ob, reward, done, info))
+                res = agent.save(data)
+                remote.send(res)
             elif cmd == 'load':
                 # TODO: update with correct parameters (loadpath)
-                ob, reward, done, info = agent.load(data)
-                remote.send((ob, reward, done, info))
+                res = agent.load(data)
+                remote.send(res)
             elif cmd == 'reset':
                 ret = agent.reset()
                 remote.send(ret)
@@ -93,12 +93,12 @@ class SubprocVecMADDPG(VecTrainer):
         # self.specs = [f().spec for f in train_fns]
         VecTrainer.__init__(self, len(train_fns))
 
-    def step_async(self, actions):
+    def step_async(self, obs_n, apply_noise, compute_Q):
         self._assert_not_closed()
-        # since we are working with multiple agents, each "action"
-        # is a list of actions for each agent in that env
-        for remote, action in zip(self.remotes, actions):
-            remote.send(('step', action))
+        # since we are working with multiple agents, each "obs_n"
+        # is a list of observations for each agent in that env
+        for remote, obs in zip(self.remotes, obs_n):
+            remote.send(('step', [obs, apply_noise, compute_Q]))
         self.waiting = True
 
     def step_wait(self):
@@ -119,7 +119,7 @@ class SubprocVecMADDPG(VecTrainer):
         results = [remote.recv() for remote in self.remotes]
         self.waiting = False
         # obs, rews, dones, infos = zip(*results)
-        return np.stack(results)
+        return results
 
     def sample_batch_async(self, replay_sample_index):
         self._assert_not_closed()
@@ -161,7 +161,7 @@ class SubprocVecMADDPG(VecTrainer):
     def store_transition_async(self, obs_n, actions_n, rew_n, new_obs_n, done_n):
         self._assert_not_closed()
         for remote, obs, actions, rew, new_obs, done in zip(self.remotes, obs_n, actions_n, rew_n, new_obs_n, done_n):
-            remote.send(('store_transition', [obs, actions, rew, new_obs, done]))
+            remote.send(('store_transition', (obs, actions, rew, new_obs, done)))
         self.waiting = True
 
     def store_transition_wait(self):
@@ -169,6 +169,42 @@ class SubprocVecMADDPG(VecTrainer):
         results = [remote.recv() for remote in self.remotes]
         self.waiting = False
         return
+
+    def adapt_param_noise_async(self, batch):
+        self._assert_not_closed()
+        for remote in self.remotes:
+            remote.send(('adapt_param_noise', batch))
+        self.waiting = True
+
+    def adapt_param_noise_wait(self):
+        self._assert_not_closed()
+        results = [remote.recv() for remote in self.remotes]
+        self.waiting = False
+        return results
+
+    def train_async(self, batch):
+        self._assert_not_closed()
+        for remote in self.remotes:
+            remote.send(('train', batch))
+        self.waiting = True
+
+    def train_wait(self):
+        self._assert_not_closed()
+        results = [remote.recv() for remote in self.remotes]
+        self.waiting = False
+        return results
+
+    def get_stats_async(self, batch):
+        self._assert_not_closed()
+        for remote in self.remotes:
+            remote.send(('get_stats', batch))
+        self.waiting = True
+
+    def get_stats_wait(self):
+        self._assert_not_closed()
+        results = [remote.recv() for remote in self.remotes]
+        self.waiting = False
+        return results
 
     def reset(self):
         self._assert_not_closed()
