@@ -90,7 +90,7 @@ class Car(pygame.sprite.Sprite):
         else:
             angular_velocity = 0
         # update y component as well
-        self.velocity.y = angular_velocity
+        self.velocity.y = -angular_velocity
 
         self.position += self.velocity.rotate(-self.angle) * dt
         self.position.y -= angular_velocity * dt
@@ -143,7 +143,7 @@ class Car(pygame.sprite.Sprite):
         else:
             self.angular_velocity = 0
         # update y component as well
-        self.velocity.y = self.angular_velocity
+        self.velocity.y = -self.angular_velocity
 
         self.position += self.velocity.rotate(-self.angle) * dt
         self.position.y -= degrees(self.angular_velocity) * dt * dt
@@ -260,3 +260,4 @@ class Obstacle(Car):
         # update rect for collision detection
         self.rect.x = self.position.x * Constants.ppu - self.rect.width / 2
         self.rect.y = self.position.y * Constants.ppu - self.rect.height / 2
+
