@@ -33,18 +33,20 @@ class MultiAgentEnvContinuous(MultiAgentEnv):
 
         # first bound is for raw min position
         pos_low = np.array([0.0, 0.0]+[-60.0, -8.0]*(num_entities-1)).flatten()
-        vel_low = np.array([-20.0, -20.0]*self.n).flatten()
+        vel_low = np.array([-20.0, -20.0]*num_agents).flatten()
+        comm_low = np.array([-5.0, -30.0]*(num_agents-1)).flatten()
         value_low = np.array([0.0]*num_lanes).flatten()
         # first bound is for raw max position
         pos_high = np.array([1200.0, 8.0]+[60.0, 8.0]*(num_entities-1)).flatten()
-        vel_high = np.array([20.0, 20.0]*self.n).flatten()
+        vel_high = np.array([20.0, 20.0]*num_agents).flatten()
+        comm_high = np.array([5.0, 30.0]*(num_agents-1)).flatten()
         value_high = np.array([5.0]*num_lanes).flatten()
         
-        self.low = np.concatenate((control_low, vel_low, pos_low, value_low))
-        self.high = np.concatenate((control_high, vel_high, pos_high, value_high))
+        self.low = np.concatenate((control_low, vel_low, pos_low, comm_low, value_low))
+        self.high = np.concatenate((control_high, vel_high, pos_high, comm_high, value_high))
 
-        assert len(self.low) == len(control_low)+len(pos_low)+len(vel_low)+len(value_low)
-        assert len(self.high) == len(control_high)+len(pos_high)+len(vel_high)+len(value_high)
+        assert len(self.low) == len(control_low)+len(pos_low)+len(vel_low)+len(comm_low)+len(value_low)
+        assert len(self.high) == len(control_high)+len(pos_high)+len(vel_high)+len(comm_high)+len(value_high)
 
         # configure spaces
         self.action_space = [None]*self.n

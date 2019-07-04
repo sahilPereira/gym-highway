@@ -90,14 +90,15 @@ class Car(pygame.sprite.Sprite):
             angular_velocity = self.velocity.x / turning_radius
         else:
             angular_velocity = 0
-        # update y component as well
-        self.velocity.y = angular_velocity
 
         self.position += self.velocity.rotate(-self.angle) * dt
         self.position.y -= angular_velocity * dt
-        print("Steeting: ", self.steering)
-        print("position.y: ", self.position.y)
-        print("angular_velocity * dt: ", angular_velocity * dt)
+        
+        # update y component as well
+        # NOTE: I was originally setting vel.y = +ang_vel (That was a BUG)
+        # Correct version is vel.y = -ang_vel
+        # The bug prevented the agent from moving in y axis
+        self.velocity.y = -angular_velocity
 
         if self.id == s_leader.id:
             self.position.x = 10
@@ -147,7 +148,7 @@ class Car(pygame.sprite.Sprite):
         else:
             self.angular_velocity = 0
         # update y component as well
-        self.velocity.y = self.angular_velocity
+        self.velocity.y = -self.angular_velocity
 
         self.position += self.velocity.rotate(-self.angle) * dt
         self.position.y -= degrees(self.angular_velocity) * dt * dt

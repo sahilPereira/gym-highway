@@ -30,7 +30,7 @@ class Scenario(BaseScenario):
         # initial positions of obstacles and agents
         # initialize in x formation
         policy_agents_data = [
-            {'id':0, 'x':10, 'y':Constants.LANE_1_C, 'vel_x':20.0, 'vel_y':0.0, 'lane_id':1},
+            {'id':0, 'x':10, 'y':Constants.LANE_2_C, 'vel_x':20.0, 'vel_y':0.0, 'lane_id':2},
             {'id':1, 'x':5, 'y':Constants.LANE_2_C, 'vel_x':20.0, 'vel_y':0.0, 'lane_id':2},
             {'id':2, 'x':7.5, 'y':Constants.LANE_2_C, 'vel_x':0.0, 'vel_y':0.0, 'lane_id':2},
             {'id':3, 'x':5, 'y':Constants.LANE_1_C, 'vel_x':0.0, 'vel_y':0.0, 'lane_id':1},
@@ -68,7 +68,7 @@ class Scenario(BaseScenario):
         collisions = world.check_collisions()
         agent_rewards = [0.0]*len(world.policy_agents_data)
         # max reward per step is 0.0 for going at max velocity
-        if len(set(collisions)) == 1:
+        if len(world.agents) > 1 and len(set(collisions)) == 1:
             collisions = [0.0 for _ in range(len(collisions))]
         for agent in world.agents:
             # if in a collision assign large negative reward
@@ -135,7 +135,8 @@ class Scenario(BaseScenario):
                 other_pos[placement_idx] = list(obj.raw_position - agent.raw_position)
                 other_value[lane] = obj.value
 
-            # get positions and velocities of all other agents in this agent's reference frame
+            # get positions, velocities and communication of all other agents in this agent's reference frame
+            comm = [None]*(len(world.agents)-1)
             for other_agent in world.agents:
                 if other_agent is agent: continue
                 
@@ -145,10 +146,12 @@ class Scenario(BaseScenario):
                 
                 other_pos[placement_idx] = list(other_agent.raw_position - agent.raw_position)
                 other_vel[placement_idx] = list(other_agent.velocity - agent.velocity)
+                mask = 1.0 if other_agent.raw_position.x > agent.raw_position.x else 0.0
+                comm[placement_idx] = list((other_agent.acceleration*mask, other_agent.steering*mask))
             
-            ob_list = [(agent.acceleration, agent.steering)] + [agent.velocity] + other_vel + [agent.raw_position] + other_pos
+            ob_list = [(agent.acceleration, agent.steering)] + [agent.velocity] + other_vel + [agent.raw_position] + other_pos + comm
             # ob_list should contain accel/steering/pos/vel of current agent and pos/vel of all other agents
-            assert len(ob_list) == len(other_pos)+len(other_vel)+3
+            assert len(ob_list) == len(other_pos)+len(other_vel)+len(comm)+3
             obv = np.array(ob_list, dtype=np.float32).flatten()
             obv = np.concatenate((obv, np.array(other_value)))
 
