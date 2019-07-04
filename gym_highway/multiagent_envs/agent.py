@@ -16,7 +16,7 @@ from gym_highway.multiagent_envs import highway_constants as Constants
 from gym_highway.multiagent_envs import actions
 
 class Car(pygame.sprite.Sprite):
-    def __init__(self, id, x, y, raw_x=None, vel_x=0.0, vel_y=0.0, lane_id=1, color=Constants.RED, angle=0.0, length=4, max_steering=30, max_acceleration=5.0):
+    def __init__(self, id, x, y, raw_x=None, vel_x=0.0, vel_y=0.0, lane_id=1, color=Constants.RED, angle=0.0, length=4, max_steering=30, max_acceleration=5.0, value=0.0):
 
         # init the sprite object
         super().__init__()
@@ -49,6 +49,7 @@ class Car(pygame.sprite.Sprite):
         self.lane_id = lane_id
         self.left_mode, self.right_mode, self.do_accelerate, self.do_decelerate, self.do_maintain = False, False, False, False, False
         self.cruise_vel = 0.0
+        self.value=value
 
         # action
         self.action = actions.Action.MAINTAIN
@@ -94,6 +95,9 @@ class Car(pygame.sprite.Sprite):
 
         self.position += self.velocity.rotate(-self.angle) * dt
         self.position.y -= angular_velocity * dt
+        print("Steeting: ", self.steering)
+        print("position.y: ", self.position.y)
+        print("angular_velocity * dt: ", angular_velocity * dt)
 
         if self.id == s_leader.id:
             self.position.x = 10
@@ -221,6 +225,16 @@ class Obstacle(Car):
     def __init__(self, *args, **kw):
         # init the sprite object
         super().__init__(*args, **kw)
+
+        self.image = pygame.Surface([Constants.CAR_WIDTH*5, Constants.CAR_WIDTH//4])
+        self.image.fill(Constants.WHITE)
+        self.image.set_colorkey(Constants.WHITE)
+ 
+        # Draw the car (a rectangle!)
+        pygame.draw.rect(self.image, Constants.YELLOW, [0, 0, Constants.CAR_WIDTH*5, Constants.CAR_WIDTH//4])
+ 
+        # Fetch the rectangle object that has the dimensions of the image.
+        self.rect = self.image.get_rect()
 
     def update(self, dt, s_leader, agents):
         self.velocity += (self.acceleration * dt, 0)

@@ -25,6 +25,7 @@ class MultiAgentEnvContinuous(MultiAgentEnv):
         self.world.continuous_ctrl = True
 
         num_entities = len(self.world.entities)
+        num_lanes = len(self.world.scripted_agents)
         # observations contain (accel, steering), all positions (x,y), followed by all velocities (vx,vy)
         # using relative positions and velocities for bounding
         control_low = np.array([-5.0, -30.0])
@@ -32,16 +33,18 @@ class MultiAgentEnvContinuous(MultiAgentEnv):
 
         # first bound is for raw min position
         pos_low = np.array([0.0, 0.0]+[-60.0, -8.0]*(num_entities-1)).flatten()
-        vel_low = np.array([-20.0, -20.0]*num_entities).flatten()
+        vel_low = np.array([-20.0, -20.0]*self.n).flatten()
+        value_low = np.array([0.0]*num_lanes).flatten()
         # first bound is for raw max position
         pos_high = np.array([1200.0, 8.0]+[60.0, 8.0]*(num_entities-1)).flatten()
-        vel_high = np.array([20.0, 20.0]*num_entities).flatten()
+        vel_high = np.array([20.0, 20.0]*self.n).flatten()
+        value_high = np.array([5.0]*num_lanes).flatten()
         
-        self.low = np.concatenate((control_low, pos_low, vel_low))
-        self.high = np.concatenate((control_high, pos_high, vel_high))
+        self.low = np.concatenate((control_low, vel_low, pos_low, value_low))
+        self.high = np.concatenate((control_high, vel_high, pos_high, value_high))
 
-        assert len(self.low) == len(control_low)+len(pos_low)+len(vel_low)
-        assert len(self.high) == len(control_high)+len(pos_high)+len(vel_high)
+        assert len(self.low) == len(control_low)+len(pos_low)+len(vel_low)+len(value_low)
+        assert len(self.high) == len(control_high)+len(pos_high)+len(vel_high)+len(value_high)
 
         # configure spaces
         self.action_space = [None]*self.n
@@ -49,7 +52,7 @@ class MultiAgentEnvContinuous(MultiAgentEnv):
         obs_dim = len(self.observation_callback(self.world)[0])
         for agent in self.agents:
             # action space continuous
-            self.action_space[agent.id] = spaces.Box(low=np.array([-1.0, -1.0]), high=np.array([1.0, 1.0]), dtype=np.float32)
+            self.action_space[agent.id] = spaces.Box(low=np.array([-1.0]), high=np.array([1.0]), dtype=np.float32)
             # observation space
             self.observation_space[agent.id] = spaces.Box(low=-np.inf, high=+np.inf, shape=(obs_dim,), dtype=np.float32)
 

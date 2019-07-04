@@ -135,10 +135,10 @@ class HighwaySimulator:
     def executeActionContinuous(self, selected_action, leader, all_obstacles, dt):
         # TODO: need to test
         # TODO: assume selected_action[0] is acceleration between -1 and 1
-        leader.acceleration += selected_action[0] * leader.max_acceleration * dt
-        leader.acceleration = max(-leader.max_acceleration, min(leader.acceleration, leader.max_acceleration))
+        # leader.acceleration += selected_action[0] * leader.max_acceleration * dt
+        # leader.acceleration = max(-leader.max_acceleration, min(leader.acceleration, leader.max_acceleration))
 
-        leader.steering += selected_action[1] * leader.max_steering * dt
+        leader.steering += selected_action[0] * leader.max_steering * dt
         leader.steering = max(-leader.max_steering, min(leader.steering, leader.max_steering))
 
     # these booleans are required to ensure the action is executed over a period of time
@@ -298,20 +298,23 @@ class HighwaySimulator:
 
         # generate new obstacles
         if self.inf_obstacles:
-            # spawn new obstacles when none ahead of lead agent
+            # spawn new reward bars together
+            rand_pos_x = float(random.uniform(70, 100))
+            reward_list = [1.0, 3.0, 5.0]
+            random.shuffle(reward_list)
+
             for lane in range(Constants.NUM_LANES):
                 obstacle = self.lane_max_obs[lane]
                 # check the relative position of lead obstacle
                 if obstacle.position.x < -Constants.CAR_WIDTH/32:
-                    # add new obstacle
-                    rand_pos_x = float(random.uniform(70, 100))
+                    # add five new obstacle
                     rand_pos_y = Constants.NEW_LANES[lane]
-                    rand_vel_x = float(random.uniform(5, 7))
+                    rand_vel_x = 0.0 # float(random.uniform(5, 7))
                     rand_lane_id = lane+1
 
                     # new obs raw position is lead agent raw pos + diff between relative pos
                     new_raw_x = self.reference_car.raw_position.x + (rand_pos_x-self.reference_car.position.x)
-                    new_obstacle = Obstacle(id=obstacle.id, x=rand_pos_x, y=rand_pos_y, raw_x=new_raw_x, vel_x=rand_vel_x, vel_y=0.0, lane_id=rand_lane_id, color=Constants.YELLOW)
+                    new_obstacle = Obstacle(id=obstacle.id, x=rand_pos_x, y=rand_pos_y, raw_x=new_raw_x, vel_x=rand_vel_x, vel_y=0.0, lane_id=rand_lane_id, color=Constants.YELLOW, value=reward_list[lane])
                     self.scripted_agents.add(new_obstacle)
                     self.all_obstacles.add(new_obstacle)
 
@@ -340,29 +343,6 @@ class HighwaySimulator:
             # assert len(self.scripted_agents) >= 3
             # # TEST: check if remove() deletes more than it should
             # assert len(self.scripted_agents) == obs_pre_count-rem_count
-
-        # # generate new obstacles
-        # if self.inf_obstacles:
-        #     for obstacle in self.scripted_agents:
-        #         if obstacle.position.x < -Constants.CAR_WIDTH/Constants.ppu:
-        #             # remove old obstacle
-        #             self.scripted_agents.remove(obstacle)
-        #             self.all_obstacles.remove(obstacle)
-        #             # obstacle_lanes.remove(obstacle.lane_id)
-
-        #             # add new obstacle
-        #             rand_pos_x = float(randrange(70, 100))
-        #             rand_pos_y = Constants.NEW_LANES[obstacle.lane_id-1]
-        #             rand_vel_x = float(randrange(5, 7))
-        #             rand_lane_id = obstacle.lane_id
-
-        #             # use same id for new obstacle so that it maintains its position in the observations
-        #             new_obstacle = Obstacle(id=obstacle.id, x=rand_pos_x, y=rand_pos_y, vel_x=rand_vel_x, vel_y=0.0, lane_id=rand_lane_id, color=Constants.YELLOW)
-        #             self.scripted_agents.add(new_obstacle)
-        #             self.all_obstacles.add(new_obstacle)
-
-        #             # TEST: reward for overtaking each vehicle
-        #             # self.reward += 1
 
         # Drawing
         if self.render:
@@ -400,7 +380,7 @@ class HighwaySimulator:
 
     def check_collisions(self):
         # collision check (done before update() to check if previous action led to collisions)
-        collisions = [False]*len(self.policy_agents_data)
+        collisions = [0.0]*len(self.policy_agents_data)
         if not self.collision_count_lock:
             for agent in self.agents:
                 # get collisions with non reactive obstacles
@@ -408,16 +388,18 @@ class HighwaySimulator:
                 obs_collision_val = len(car_collision_list)
                 self.num_obs_collisions += obs_collision_val
 
-                # get collisions with reactive agents
-                collision_group = self.agents.copy()
-                collision_group.remove(agent)
-                car_collision_list = pygame.sprite.spritecollide(agent, collision_group, False)
-                agent_collision_val = len(car_collision_list)
-                self.num_agent_collisions += agent_collision_val
+                # # get collisions with reactive agents
+                # collision_group = self.agents.copy()
+                # collision_group.remove(agent)
+                # car_collision_list = pygame.sprite.spritecollide(agent, collision_group, False)
+                # agent_collision_val = len(car_collision_list)
+                # self.num_agent_collisions += agent_collision_val
 
-                if (obs_collision_val + agent_collision_val) > 0:
-                    collisions[agent.id] = True
-                    self.is_done[agent.id] = True
+                # if (obs_collision_val + agent_collision_val) > 0:
+                #     collisions[agent.id] = True
+                #     # self.is_done[agent.id] = True
+                for block in car_collision_list:
+                    collisions[agent.id] = block.value
 
         return collisions
 

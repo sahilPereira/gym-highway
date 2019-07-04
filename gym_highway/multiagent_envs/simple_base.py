@@ -30,16 +30,16 @@ class Scenario(BaseScenario):
         # initial positions of obstacles and agents
         # initialize in x formation
         policy_agents_data = [
-            {'id':0, 'x':10, 'y':Constants.LANE_1_C, 'vel_x':0.0, 'vel_y':0.0, 'lane_id':1},
-            {'id':1, 'x':10, 'y':Constants.LANE_3_C, 'vel_x':0.0, 'vel_y':0.0, 'lane_id':3},
+            {'id':0, 'x':10, 'y':Constants.LANE_1_C, 'vel_x':20.0, 'vel_y':0.0, 'lane_id':1},
+            {'id':1, 'x':5, 'y':Constants.LANE_2_C, 'vel_x':20.0, 'vel_y':0.0, 'lane_id':2},
             {'id':2, 'x':7.5, 'y':Constants.LANE_2_C, 'vel_x':0.0, 'vel_y':0.0, 'lane_id':2},
             {'id':3, 'x':5, 'y':Constants.LANE_1_C, 'vel_x':0.0, 'vel_y':0.0, 'lane_id':1},
             {'id':4, 'x':5, 'y':Constants.LANE_3_C, 'vel_x':0.0, 'vel_y':0.0, 'lane_id':3}
         ]
         scripted_agents_data = [
-            {'id':n_agents, 'x':-20, 'y':Constants.LANE_1_C, 'vel_x':7.0, 'lane_id':1, 'color':Constants.YELLOW}, 
-            {'id':n_agents+1, 'x':-25, 'y':Constants.LANE_2_C, 'vel_x':5.0, 'lane_id':2, 'color':Constants.YELLOW},
-            {'id':n_agents+2, 'x':-40, 'y':Constants.LANE_3_C, 'vel_x':6.0, 'lane_id':3, 'color':Constants.YELLOW}
+            {'id':n_agents, 'x':-20, 'y':Constants.LANE_1_C, 'vel_x':0.0, 'lane_id':1, 'color':Constants.YELLOW}, 
+            {'id':n_agents+1, 'x':-25, 'y':Constants.LANE_2_C, 'vel_x':0.0, 'lane_id':2, 'color':Constants.YELLOW},
+            {'id':n_agents+2, 'x':-40, 'y':Constants.LANE_3_C, 'vel_x':0.0, 'lane_id':3, 'color':Constants.YELLOW}
         ]
         # set agent initialization data
         world.policy_agents_data = policy_agents_data[:n_agents]
@@ -68,10 +68,12 @@ class Scenario(BaseScenario):
         collisions = world.check_collisions()
         agent_rewards = [0.0]*len(world.policy_agents_data)
         # max reward per step is 0.0 for going at max velocity
+        if len(set(collisions)) == 1:
+            collisions = [0.0 for _ in range(len(collisions))]
         for agent in world.agents:
             # if in a collision assign large negative reward
             if collisions[agent.id]:
-                agent_rewards[agent.id] = -250.0
+                agent_rewards[agent.id] = collisions[agent.id]
             else:
                 # reward of 0.0 for going max speed, negative reward otherwise
                 agent_rewards[agent.id] = (agent.velocity.x / agent.max_velocity) - 1.0
@@ -96,7 +98,8 @@ class Scenario(BaseScenario):
             # all agents except the one in focus and max 3 obstacles
             # 3 obs - 1 ego agent = 2 extra
             other_pos = [None]*(len(world.agents)+2)
-            other_vel = [None]*(len(world.agents)+2)
+            other_value = [None]*3
+            other_vel = [None]*(len(world.agents)-1)
 
             lane_obs_near = [None for _ in range(Constants.NUM_LANES)]
             # get closest obstacle
@@ -130,7 +133,7 @@ class Scenario(BaseScenario):
                 if obj.id > agent.id: placement_idx -= 1
                 
                 other_pos[placement_idx] = list(obj.raw_position - agent.raw_position)
-                other_vel[placement_idx] = list(obj.velocity - agent.velocity)
+                other_value[lane] = obj.value
 
             # get positions and velocities of all other agents in this agent's reference frame
             for other_agent in world.agents:
@@ -143,12 +146,14 @@ class Scenario(BaseScenario):
                 other_pos[placement_idx] = list(other_agent.raw_position - agent.raw_position)
                 other_vel[placement_idx] = list(other_agent.velocity - agent.velocity)
             
-            ob_list = [(agent.acceleration, agent.steering)] + [agent.raw_position] + other_pos + [agent.velocity] + other_vel
-            
+            ob_list = [(agent.acceleration, agent.steering)] + [agent.velocity] + other_vel + [agent.raw_position] + other_pos
             # ob_list should contain accel/steering/pos/vel of current agent and pos/vel of all other agents
             assert len(ob_list) == len(other_pos)+len(other_vel)+3
             obv = np.array(ob_list, dtype=np.float32).flatten()
+            obv = np.concatenate((obv, np.array(other_value)))
 
             # ensure consistent order
             observations[agent.id] = obv
+        
+        # print("Raw obs: ", observations)
         return observations
