@@ -51,6 +51,7 @@ def parse_args():
     parser.add_argument('--reward_scale', help='Reward scale factor. Default: 1.0', default=1.0, type=float)
     parser.add_argument('--continuous', default=False, help='Use continuous actions', action='store_true')
     parser.add_argument('--play', default=False, action='store_true')
+    parser.add_argument('--test', default=False, action='store_true')
     return parser
 
 def mlp_model(input, num_outputs, scope, reuse=False, num_units=256, rnn_cell=None):
@@ -365,3 +366,33 @@ if __name__ == '__main__':
 
     model, env = train(args, extra_args)
     env.close()
+
+    if args.test:
+        logger.log("Running trained model")
+        env = build_env(args)
+        obs_n = env.reset()
+
+        state = model[0].initial_state if hasattr(model[0], 'initial_state') else None
+        dones = np.zeros((args.num_agents,))
+
+        # print(obs_n)
+
+        while True:
+            actions_n = []
+            if state is not None:
+                actions, _, state, _ = model[0].step(obs, S=state, M=dones)
+            else:
+                # for MA_DDPG
+                actions = [agent.step(obs_n[0], apply_noise=True, compute_Q=False)[0] for agent in model]
+            actions_n.append(actions)
+            # print(actions_n)
+            obs_n, _, done, _ = env.step(actions_n)
+            
+            # Not required since the gym highway environment renders based on init param
+            # env.render()
+            done = done.any() if isinstance(done, np.ndarray) else done
+
+            if done:
+                obs_n = env.reset()
+        
+        env.close()
