@@ -209,16 +209,8 @@ def learn(network, env,
                     action_q_list = [agent.step(obs, apply_noise=True, compute_Q=False)[0] for agent, obs in zip(trainers, rep_obs)]
                     # store actions and q vals in respective lists
                     actions_n.append(action_q_list)
-                    # we care about the overall q value for each agent
-                    # print("action_q_list: ", action_q_list)
-                    # print("q_n: ", np.array(action_q_list)[:,1])
-                    # q_n += np.array(action_q_list)[:,1]
                 
                 # confirm actions_n is nenvs x num_agents x len(Action)
-                # print("actions_n: ", actions_n)
-                # print("actions_n: ", actions_n[0][1])
-                # print((len(actions_n),len(actions_n[0]),len(actions_n[0][0])))
-                # print((nenvs, num_agents, nb_actions))
                 assert (len(actions_n),len(actions_n[0]),len(actions_n[0][0])) == (nenvs, num_agents, nb_actions)
 
                 # environment step
@@ -227,7 +219,6 @@ def learn(network, env,
                 # sum of rewards for each env
                 episode_reward += [r for r in rew_n]
                 episode_step += 1
-                # epoch_qs += [q / float(nenvs) for q in q_n]
 
                 # Book-keeping
                 for i, agent in enumerate(trainers):
