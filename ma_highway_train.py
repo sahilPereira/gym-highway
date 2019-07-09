@@ -43,6 +43,8 @@ def parse_args():
     # Environment
     parser.add_argument('--env', help='environment ID', type=str, default=Config.ma_c_env_id)
     parser.add_argument('--seed', help='RNG seed', type=int, default=None)
+    parser.add_argument('--branch', help='current git branch', type=str, default=None)
+    parser.add_argument('--desc', help='extra description', type=str, default=None)
     parser.add_argument('--alg', help='Algorithm', type=str, default='maddpg')
     parser.add_argument('--network', help='network type (mlp, cnn, lstm, cnn_lstm, conv_only)', default=None)
     parser.add_argument('--num_timesteps', type=float, default=1e6)
