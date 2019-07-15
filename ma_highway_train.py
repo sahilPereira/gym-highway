@@ -43,6 +43,8 @@ def parse_args():
     # Environment
     parser.add_argument('--env', help='environment ID', type=str, default=Config.ma_c_env_id)
     parser.add_argument('--seed', help='RNG seed', type=int, default=None)
+    parser.add_argument('--branch', help='current git branch', type=str, default=None)
+    parser.add_argument('--desc', help='extra description', type=str, default=None)
     parser.add_argument('--alg', help='Algorithm', type=str, default='maddpg')
     parser.add_argument('--network', help='network type (mlp, cnn, lstm, cnn_lstm, conv_only)', default=None)
     parser.add_argument('--num_timesteps', type=float, default=1e6)
@@ -375,8 +377,9 @@ if __name__ == '__main__':
         state = model[0].initial_state if hasattr(model[0], 'initial_state') else None
         dones = np.zeros((args.num_agents,))
 
-        # print(obs_n)
-
+        total_reward = np.zeros((len(obs_n[0],)), dtype=np.float32)
+        last_rew = np.zeros((len(obs_n[0],)), dtype=np.float32)
+        total_steps = 0
         while True:
             actions_n = []
             if state is not None:
@@ -386,7 +389,16 @@ if __name__ == '__main__':
                 actions = [agent.step(obs_n[0], apply_noise=True, compute_Q=False)[0] for agent in model]
             actions_n.append(actions)
             # print(actions_n)
-            obs_n, _, done, _ = env.step(actions_n)
+            obs_n, rew_n, done, _ = env.step(actions_n)
+
+            # print(total_reward)
+            # print(rew_n)
+            # print(rew_n.shape)
+            total_reward += rew_n[0]
+            last_rew = [rew_n[0][i] if rew_n[0][i]>0 else last_rew[i] for i in range(len(rew_n[0]))]
+            total_steps += 1
+            # print(total_reward)
+            print('A0:[{}], A1:[{}]'.format(last_rew[0], last_rew[1]), end="\r")
             
             # Not required since the gym highway environment renders based on init param
             # env.render()
@@ -394,5 +406,7 @@ if __name__ == '__main__':
 
             if done:
                 obs_n = env.reset()
+                print('Agent0:[{}], Agent1:[{}]'.format(total_reward[0], total_reward[1]))
+                total_reward = np.zeros((len(obs_n[0],)), dtype=np.float32)
         
         env.close()
