@@ -385,7 +385,8 @@ if __name__ == '__main__':
                 actions, _, state, _ = model[0].step(obs, S=state, M=dones)
             else:
                 # for MA_DDPG
-                actions = [agent.step(obs_n[0], apply_noise=True, compute_Q=False)[0] for agent in model]
+                # NOTE: DO NOT APPLY NOISE DURIG TESTING (APPLY NOISE ONLY USED FOR TRAINING)
+                actions = [agent.step(obs_n[0], apply_noise=False, compute_Q=False)[0] for agent in model]
             actions_n.append(actions)
             # print(actions_n)
             obs_n, _, done, _ = env.step(actions_n)

@@ -86,7 +86,7 @@ class MultiAgentEnv(gym.Env):
                 break
 
         # NOTE: changed from self._get_obs_norm()
-        obs_n = self._get_obs()
+        obs_n = self._get_obs_norm()
         info_n = {'n': self._get_info()}
         
         # all agents get total reward in cooperative case
@@ -111,7 +111,7 @@ class MultiAgentEnv(gym.Env):
 
         # return observations for all agents
         # NOTE: changed from self._get_obs_norm()
-        return self._get_obs()
+        return self._get_obs_norm()
 
     # get info used for benchmarking
     def _get_info(self):

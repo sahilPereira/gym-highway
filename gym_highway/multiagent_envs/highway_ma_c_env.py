@@ -72,7 +72,7 @@ class MultiAgentEnvContinuous(MultiAgentEnv):
                 break
 
         # NOTE: changed from self._get_obs_norm()
-        obs_n = self._get_obs()
+        obs_n = self._get_obs_norm()
         info_n = {'n': self._get_info()}
         
         # all agents get total reward in cooperative case
