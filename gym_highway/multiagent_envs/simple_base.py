@@ -75,6 +75,10 @@ class Scenario(BaseScenario):
             else:
                 # reward of 0.0 for going max speed, negative reward otherwise
                 agent_rewards[agent.id] = (agent.velocity.x / agent.max_velocity) - 1.0
+
+                # penalize follower
+                if agent.position.x < 10.0:
+                    agent_rewards[agent.id] -= 0.5
         
         self.current_rewards = agent_rewards
         return agent_rewards
