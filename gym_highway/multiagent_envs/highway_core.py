@@ -306,6 +306,7 @@ class HighwaySimulator:
                     # add new obstacle
                     rand_pos_x = float(random.uniform(70, 100))
                     rand_pos_y = Constants.NEW_LANES[lane]
+                    rand_pos_y += random.uniform(-20,20)/Constants.ppu
                     rand_vel_x = float(random.uniform(5, 7))
                     rand_lane_id = lane+1
 
