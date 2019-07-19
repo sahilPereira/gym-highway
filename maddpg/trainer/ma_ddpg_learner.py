@@ -398,13 +398,31 @@ class MADDPG(object):
         obs1_n = []
         act_n = []
         target_act_n = []
+        agent_batch = self.memory.sample(batch_size=self.batch_size, index=replay_sample_index)
         for i in range(self.num_agents):
             # Get a batch.
             batch = agents[i].memory.sample(batch_size=self.batch_size, index=replay_sample_index)
             obs0_n.append(batch['obs0'])
             obs1_n.append(batch['obs1'])
-            act_n.append(batch['actions'])
+
+            # filter out follower actions
+            # 1. get boolean vector of which actions to clear for each item in the batch
+            # b_vector = [[1.0] if batch['obs0'][k][pos_x] >= agent_batch['obs0'][k][pos_x] else [0.0] for k in range(len(batch['obs0']))]
+            # b_vector = np.array(b_vector)
+            b_vector = batch['obs0'][:,2] >= agent_batch['obs0'][:,2] # idx 2 corresponds to raw_position x
+            # 2. iterate over the actions and clear specific actions according to the vector
+            # filtered_act_n = [batch['actions'][k]*b_vector[k] for k in range(len(batch['actions']))]
+            # filtered_act_n = np.array(filtered_act_n)
+            b_vector = np.reshape(len(b_vector),1)
+            filtered_act_n = batch['actions']*b_vector
+
+            print("batch['actions'] [{}]: {}".format(i, batch['actions'][:10]))
+            print("Binary vector [{}]: {}".format(i, b_vector[:10]))
+            print("filtered_act_n [{}]: {}".format(i, filtered_act_n[:10]))
+
+            act_n.append(filtered_act_n)
         batch = self.memory.sample(batch_size=self.batch_size, index=replay_sample_index)
+        print("act_n first 5: ", act_n[:5])
 
         # get target actions for each agent using obs1
         for i in range(self.num_agents):
