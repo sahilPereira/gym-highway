@@ -406,29 +406,27 @@ class MADDPG(object):
             obs1_n.append(batch['obs1'])
 
             # filter out follower actions
-            # 1. get boolean vector of which actions to clear for each item in the batch
-            # b_vector = [[1.0] if batch['obs0'][k][pos_x] >= agent_batch['obs0'][k][pos_x] else [0.0] for k in range(len(batch['obs0']))]
-            # b_vector = np.array(b_vector)
+            # get boolean vector of actions to clear for each item in the batch
             b_vector = batch['obs0'][:,2] >= agent_batch['obs0'][:,2] # idx 2 corresponds to raw_position x
-            # 2. iterate over the actions and clear specific actions according to the vector
-            # filtered_act_n = [batch['actions'][k]*b_vector[k] for k in range(len(batch['actions']))]
-            # filtered_act_n = np.array(filtered_act_n)
-            b_vector = np.reshape(len(b_vector),1)
-            filtered_act_n = batch['actions']*b_vector
+            b_vector = b_vector.reshape(len(b_vector),1)
+            # zero out follower actions
+            filtered_act = batch['actions']*b_vector
 
-            print("batch['actions'] [{}]: {}".format(i, batch['actions'][:10]))
-            print("Binary vector [{}]: {}".format(i, b_vector[:10]))
-            print("filtered_act_n [{}]: {}".format(i, filtered_act_n[:10]))
-
-            act_n.append(filtered_act_n)
+            act_n.append(filtered_act)
         batch = self.memory.sample(batch_size=self.batch_size, index=replay_sample_index)
-        print("act_n first 5: ", act_n[:5])
 
         # get target actions for each agent using obs1
         for i in range(self.num_agents):
             target_acts = self.sess.run(agents[i].target_actor_tf, feed_dict={agents[i].obs1: obs1_n})
+
+            # filter out follower target actions
+            b_vector = obs1_n[i][:,2] >= agent_batch['obs1'][:,2] # idx 2 corresponds to raw_position x
+            b_vector = b_vector.reshape(len(b_vector),1)
+            # zero out follower target actions
+            filtered_target_act = target_acts*b_vector
+
             # save the batch of target actions
-            target_act_n.append(target_acts)
+            target_act_n.append(filtered_target_act)
         
         # fill placeholders in obs1 with corresponding obs from each agent's replay buffer
         # self.obs1 and obs1_n are lists of size num_agents
@@ -506,10 +504,18 @@ class MADDPG(object):
             replay_sample_index = self.memory.generate_index(self.batch_size)
             # collect replay sample from all agents
             obs0_n, act_n = [], []
+            agent_batch = self.memory.sample(batch_size=self.batch_size, index=replay_sample_index)
             for i in range(self.num_agents):
                 batch = agents[i].memory.sample(batch_size=self.batch_size, index=replay_sample_index)
                 obs0_n.append(batch['obs0'])
-                act_n.append(batch['actions'])
+
+                # filter out follower actions
+                b_vector = batch['obs0'][:,2] >= agent_batch['obs0'][:,2]
+                b_vector = b_vector.reshape(len(b_vector),1)
+                # zero out follower actions
+                filtered_act = batch['actions']*b_vector
+
+                act_n.append(filtered_act)
             # generate feed_dict for multiple observations and actions
             # feed_dict={ph: data for ph, data in zip(self.obs0, obs0_n)}
             feed_dict = {self.obs0: obs0_n}
