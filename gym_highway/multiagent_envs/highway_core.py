@@ -379,7 +379,8 @@ class HighwaySimulator:
         # collision check (done before update() to check if previous action led to collisions)
         collisions = [False]*len(self.policy_agents_data)
         if not self.collision_count_lock:
-            for agent in self.agents:
+            sorted_agents = sorted(self.agents, key=lambda obj: obj.raw_position.x, reverse=True)
+            for i, agent in enumerate(sorted_agents):
                 # get collisions with non reactive obstacles
                 car_collision_list = pygame.sprite.spritecollide(agent, self.scripted_agents, False)
                 obs_collision_val = len(car_collision_list)
@@ -393,8 +394,10 @@ class HighwaySimulator:
                 self.num_agent_collisions += agent_collision_val
 
                 if (obs_collision_val + agent_collision_val) > 0:
-                    collisions[agent.id] = True
-                    self.is_done[agent.id] = True
+                    collisions[i] = True
+                    self.is_done[i] = True
+                    # collisions[agent.id] = True
+                    # self.is_done[agent.id] = True
 
         return collisions
 

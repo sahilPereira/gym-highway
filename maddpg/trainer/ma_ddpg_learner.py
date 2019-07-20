@@ -94,11 +94,12 @@ class MADDPG(object):
 
         # this is required to reshape obs and actions for concatenation
         obs_shape_list = [self.num_agents] + list(obs_space_n[self.agent_index].shape)
-        act_shape_list = [self.num_agents] + list(act_space_n[self.agent_index].shape)
+        act_shape_list = [self.agent_index+1] + list(act_space_n[self.agent_index].shape)
         self.obs_shape_prod = np.prod(obs_shape_list)
         self.act_shape_prod = np.prod(act_shape_list)
 
-        for i in range(self.num_agents):
+        # only have action placeholders for itself and leaders
+        for i in range(self.agent_index+1):
             if continuous_ctrl:
                 self.actions.append(tf.placeholder(tf.float32, shape=[None] + list(act_space_n[i].shape), name="action"+str(i)))
             else:
@@ -403,14 +404,18 @@ class MADDPG(object):
             batch = agents[i].memory.sample(batch_size=self.batch_size, index=replay_sample_index)
             obs0_n.append(batch['obs0'])
             obs1_n.append(batch['obs1'])
-            act_n.append(batch['actions'])
+
+            # only consider actions for leaders and yourself
+            if i <= self.agent_index:
+                act_n.append(batch['actions'])
         batch = self.memory.sample(batch_size=self.batch_size, index=replay_sample_index)
 
-        # get target actions for each agent using obs1
+        # get target actions for leading agents using obs1
         for i in range(self.num_agents):
-            target_acts = self.sess.run(agents[i].target_actor_tf, feed_dict={agents[i].obs1: obs1_n})
-            # save the batch of target actions
-            target_act_n.append(target_acts)
+            if i <= self.agent_index:
+                target_acts = self.sess.run(agents[i].target_actor_tf, feed_dict={agents[i].obs1: obs1_n})
+                # save the batch of target actions
+                target_act_n.append(target_acts)
         
         # fill placeholders in obs1 with corresponding obs from each agent's replay buffer
         # self.obs1 and obs1_n are lists of size num_agents
@@ -491,7 +496,9 @@ class MADDPG(object):
             for i in range(self.num_agents):
                 batch = agents[i].memory.sample(batch_size=self.batch_size, index=replay_sample_index)
                 obs0_n.append(batch['obs0'])
-                act_n.append(batch['actions'])
+
+                if i <= self.agent_index:
+                    act_n.append(batch['actions'])
             # generate feed_dict for multiple observations and actions
             # feed_dict={ph: data for ph, data in zip(self.obs0, obs0_n)}
             feed_dict = {self.obs0: obs0_n}

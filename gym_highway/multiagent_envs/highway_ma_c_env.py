@@ -58,10 +58,11 @@ class MultiAgentEnvContinuous(MultiAgentEnv):
         Update state of the world
         """
         num_steps = int(self.world.ticks/4)
-        self.agents = self.world.agents
+        sorted_agents = sorted(self.world.agents, key=lambda obj: obj.raw_position.x, reverse=True)
         # set action for each agent
-        for agent in self.agents:
-            agent.action = action_n[agent.id]
+        for i, agent in enumerate(sorted_agents):
+            # actions are sorted because the observations are sorted
+            agent.action = action_n[i]
         
         # perform num_steps in world
         for _ in range(num_steps):
