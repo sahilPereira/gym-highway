@@ -32,7 +32,7 @@ class HighwaySimulator:
         self.inf_obstacles = inf_obs
         self.is_data_saved = save
         self.render = render
-        self.run_duration = 60 # 60 seconds
+        self.run_duration = 60.0 # 60 seconds
         self.continuous_ctrl = continuous
 
         # list of agents and entities (can change at execution-time!)
@@ -273,7 +273,7 @@ class HighwaySimulator:
         self.run_time += dt
         self.continuous_time += dt
 
-        if self.run_time >= self.run_duration:
+        if self.run_time >= self.run_duration-(dt/2.0):
             self.is_done = [True]*len(self.policy_agents_data)
 
         # execute action for each agent (actions are updated in the env after calling update())
