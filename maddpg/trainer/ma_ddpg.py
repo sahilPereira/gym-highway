@@ -111,8 +111,8 @@ def learn(network, env,
     obs_shape = (num_agents,)+env.observation_space[0].shape
     with tf.variable_scope('obs_rms'):
         obs_rms = RunningMeanStd(shape=obs_shape)
-    trainers = []
-    for i in range(num_agents):
+    trainers = [None for i in range(num_agents)]
+    for i in range(num_agents-1, -1, -1):
         # get action shape for an agent
         action_shape = env.action_space[i].shape if continuous_ctrl else (nb_actions, )
 
@@ -133,11 +133,12 @@ def learn(network, env,
             gamma=gamma, tau=tau, normalize_returns=normalize_returns, normalize_observations=normalize_observations,
             batch_size=batch_size, action_noise=action_noise, param_noise=param_noise, critic_l2_reg=critic_l2_reg,
             actor_lr=actor_lr, critic_lr=critic_lr, enable_popart=popart, clip_norm=clip_norm,
-            reward_scale=reward_scale)
+            reward_scale=reward_scale, leaders=trainers)
         
         # Prepare agent
         agent.initialize(sess)
-        trainers.append(agent)
+        # trainers.append(agent)
+        trainers[i] = agent
     
     # TODO: test if this actually works
     # Test by running the trained models (num_agents>=2)

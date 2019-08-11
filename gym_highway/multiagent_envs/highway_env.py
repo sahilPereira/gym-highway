@@ -41,15 +41,17 @@ class MultiAgentEnv(gym.Env):
         # first bound is for raw min position
         pos_low = np.array([0.0, 0.0]+[-60.0, -8.0]*(num_entities-1)).flatten()
         vel_low = np.array([-20.0, -20.0]*num_entities).flatten()
+        comm_low = np.array([-5.0, -30.0]*(num_agents-1)).flatten()
         # first bound is for raw max position
         pos_high = np.array([1200.0, 8.0]+[60.0, 8.0]*(num_entities-1)).flatten()
         vel_high = np.array([20.0, 20.0]*num_entities).flatten()
+        comm_high = np.array([5.0, 30.0]*(num_agents-1)).flatten()
         
-        self.low = np.concatenate((control_low, pos_low, vel_low))
-        self.high = np.concatenate((control_high, pos_high, vel_high))
+        self.low = np.concatenate((control_low, pos_low, vel_low, comm_low))
+        self.high = np.concatenate((control_high, pos_high, vel_high, comm_high))
 
-        assert len(self.low) == len(control_low)+len(pos_low)+len(vel_low)
-        assert len(self.high) == len(control_high)+len(pos_high)+len(vel_high)
+        assert len(self.low) == len(control_low)+len(pos_low)+len(vel_low)+len(comm_low)
+        assert len(self.high) == len(control_high)+len(pos_high)+len(vel_high)+len(comm_high)
 
         # configure spaces
         self.action_space = [None]*self.n

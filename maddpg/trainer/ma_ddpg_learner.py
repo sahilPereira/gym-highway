@@ -77,7 +77,7 @@ class MADDPG(object):
     def __init__(self, name, actor, critic, memory, obs_space_n, act_space_n, agent_index, obs_rms, param_noise=None, action_noise=None,
         gamma=0.99, tau=0.001, normalize_returns=False, enable_popart=False, normalize_observations=True,
         batch_size=128, observation_range=(-5., 5.), action_range=(-1., 1.), return_range=(-np.inf, np.inf),
-        critic_l2_reg=0., actor_lr=1e-4, critic_lr=1e-3, clip_norm=None, reward_scale=1.):
+        critic_l2_reg=0., actor_lr=1e-4, critic_lr=1e-3, clip_norm=None, reward_scale=1., leaders=None):
         self.name = name
         self.num_agents = len(obs_space_n)
         self.agent_index = agent_index
@@ -94,12 +94,14 @@ class MADDPG(object):
 
         # this is required to reshape obs and actions for concatenation
         obs_shape_list = [self.num_agents] + list(obs_space_n[self.agent_index].shape)
-        act_shape_list = [self.agent_index+1] + list(act_space_n[self.agent_index].shape)
+        act_shape_list = [self.num_agents] + list(act_space_n[self.agent_index].shape)
+        # TODO: remove after testing
+        print("obs_shape_list: ", obs_shape_list)
+        print("act_shape_list: ", act_shape_list)
         self.obs_shape_prod = np.prod(obs_shape_list)
         self.act_shape_prod = np.prod(act_shape_list)
 
-        # only have action placeholders for itself and leaders
-        for i in range(self.agent_index+1):
+        for i in range(self.num_agents):
             if continuous_ctrl:
                 self.actions.append(tf.placeholder(tf.float32, shape=[None] + list(act_space_n[i].shape), name="action"+str(i)))
             else:
@@ -191,6 +193,23 @@ class MADDPG(object):
         # need to provide critic() with all actions
         act_input_n = self.actions + [] # copy actions
         act_input_n[self.agent_index] = self.actor_tf # update current agent action using its actor
+        
+        # TODO: update follower actions with follower policy
+        # NOTE: currently only works with 2 agents
+        # need to modify to allow for more follower policies
+        # for i in range(len(obs_shape_list)):
+        #     # update the follower observations
+        #     if i > self.agent_index:
+        #         # 1. Get the observations for the follower
+        #         obs_f = normalized_act_obs0[i]
+        #         # 2. Filter out the communication info
+        #         # slice off the end of the observation, corresponding to the size of the action
+        #         obs_f_sliced = tf.slice(obs_f, [0, 0], [-1, obs_shape_list[-1]-act_shape_list[-1]], name='pslice_%d_%d'%(self.agent_index, i))
+        #         # 3. Replace comm info with output of leader policy
+        #         obs_f_updated = tf.concat([obs_f_sliced, self.actor_tf], axis=1, name='pconcat_%d_%d'%(self.agent_index, i))
+        #         # 4. replace current follower action with follower policy
+        #         act_input_n[i] = leaders[i].actor_tf(obs_f_updated)
+
         act_input_n_t = tf.transpose(act_input_n, perm=[1, 0, 2])
         act_input_n_t_flat = tf.reshape(act_input_n_t, [-1, self.act_shape_prod])
         self.normalized_critic_with_actor_tf = critic(normalized_obs0_flat, act_input_n_t_flat, reuse=True)
@@ -406,16 +425,16 @@ class MADDPG(object):
             obs1_n.append(batch['obs1'])
 
             # only consider actions for leaders and yourself
-            if i <= self.agent_index:
-                act_n.append(batch['actions'])
+            # if i <= self.agent_index:
+            act_n.append(batch['actions'])
         batch = self.memory.sample(batch_size=self.batch_size, index=replay_sample_index)
 
         # get target actions for leading agents using obs1
         for i in range(self.num_agents):
-            if i <= self.agent_index:
-                target_acts = self.sess.run(agents[i].target_actor_tf, feed_dict={agents[i].obs1: obs1_n})
-                # save the batch of target actions
-                target_act_n.append(target_acts)
+            # if i <= self.agent_index:
+            target_acts = self.sess.run(agents[i].target_actor_tf, feed_dict={agents[i].obs1: obs1_n})
+            # save the batch of target actions
+            target_act_n.append(target_acts)
         
         # fill placeholders in obs1 with corresponding obs from each agent's replay buffer
         # self.obs1 and obs1_n are lists of size num_agents
@@ -497,8 +516,8 @@ class MADDPG(object):
                 batch = agents[i].memory.sample(batch_size=self.batch_size, index=replay_sample_index)
                 obs0_n.append(batch['obs0'])
 
-                if i <= self.agent_index:
-                    act_n.append(batch['actions'])
+                # if i <= self.agent_index:
+                act_n.append(batch['actions'])
             # generate feed_dict for multiple observations and actions
             # feed_dict={ph: data for ph, data in zip(self.obs0, obs0_n)}
             feed_dict = {self.obs0: obs0_n}

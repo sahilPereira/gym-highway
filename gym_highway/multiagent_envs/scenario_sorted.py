@@ -101,6 +101,8 @@ class ScenarioSorted(BaseScenario):
 
         # sort agents so that we can populate observations based on leaders/followers
         sorted_agents = sorted(world.agents, key=lambda obj: obj.raw_position.x, reverse=True)
+        # used to track leading agents
+        leader_ids = []
 
         # for agent in world.agents:
         for i, agent in enumerate(sorted_agents):
@@ -143,7 +145,8 @@ class ScenarioSorted(BaseScenario):
                 other_pos[placement_idx] = list(obj.raw_position - agent.raw_position)
                 other_vel[placement_idx] = list(obj.velocity - agent.velocity)
 
-            # get positions and velocities of all other agents in this agent's reference frame
+            # get positions, velocities and communication of all other agents in this agent's reference frame
+            comm = [[0.0,0.0]]*(len(world.agents)-1)
             for other_agent in world.agents:
                 if other_agent is agent: continue
                 
@@ -153,13 +156,18 @@ class ScenarioSorted(BaseScenario):
                 
                 other_pos[placement_idx] = list(other_agent.raw_position - agent.raw_position)
                 other_vel[placement_idx] = list(other_agent.velocity - agent.velocity)
+                # agents can only see leader actions
+                if other_agent.id in leader_ids:
+                    comm[placement_idx] = list((other_agent.acceleration, other_agent.steering))
             
-            ob_list = [(agent.acceleration, agent.steering)] + [agent.raw_position] + other_pos + [agent.velocity] + other_vel
+            ob_list = [(agent.acceleration, agent.steering)] + [agent.raw_position] + other_pos + [agent.velocity] + other_vel + comm
             
             # ob_list should contain accel/steering/pos/vel of current agent and pos/vel of all other agents
-            assert len(ob_list) == len(other_pos)+len(other_vel)+3
+            assert len(ob_list) == len(other_pos)+len(other_vel)+len(comm)+3
             obv = np.array(ob_list, dtype=np.float32).flatten()
 
+            # add the agent id to the leaders list
+            leader_ids.append(agent.id)
             # ensure consistent order
             # observations[agent.id] = obv
             observations[i] = obv
