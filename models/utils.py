@@ -36,10 +36,12 @@ def id_generator(size=4, chars=string.ascii_lowercase + string.digits):
     return ''.join(random.choice(chars) for _ in range(size))
 
 def create_results_dir(args):
-    current_time = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M")
-    new_run_dir = "{}_{}_{}_{}".format(args.alg, args.env, current_time, id_generator())
+    current_month = datetime.datetime.now().strftime("%B_%Y")
+    current_time = datetime.datetime.now().strftime("%d_%H-%M")
+    branch = args.branch if args.branch else args.env
+    new_run_dir = "{}_{}_{}_{}".format(args.alg, branch, current_time, id_generator())
 
-    results_dir = "{}/{}".format(Config.results_dir, new_run_dir)
+    results_dir = "{}/{}/{}".format(Config.results_dir, current_month, new_run_dir)
     results_dir = osp.expanduser(results_dir)
     if not os.path.exists(results_dir):
         try:

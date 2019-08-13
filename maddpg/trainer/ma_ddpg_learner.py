@@ -84,6 +84,8 @@ class MADDPG(object):
 
         from gym import spaces
         continuous_ctrl = not isinstance(act_space_n[0], spaces.Discrete)
+        # TODO: remove after testing
+        assert continuous_ctrl
 
         # Multi-agent inputs
         self.actions = []
@@ -105,6 +107,11 @@ class MADDPG(object):
             else:
                 self.actions.append(make_pdtype(act_space_n[i]).sample_placeholder([None], name="action"+str(i)))
 
+            # self.obs0.append(tf.placeholder(tf.float32, shape=(None,) + obs_space_n[i].shape, name="obs0_"+str(i)))
+            # self.obs1.append(tf.placeholder(tf.float32, shape=(None,) + obs_space_n[i].shape, name="obs1_"+str(i)))
+
+            # obs_shape_list.append(list(obs_space_n[i].shape))
+        
         # we only provide single agent inputs for these placeholders
         self.terminals1 = tf.placeholder(tf.float32, shape=(None, 1), name='terminals1')
         self.rewards = tf.placeholder(tf.float32, shape=(None, 1), name='rewards')
@@ -173,10 +180,10 @@ class MADDPG(object):
 
         # Create target networks.
         target_actor = copy(actor)
-        target_actor.name = 'target_actor'
+        target_actor.name = 'target_actor_%d' % self.agent_index
         self.target_actor = target_actor
         target_critic = copy(critic)
-        target_critic.name = 'target_critic'
+        target_critic.name = 'target_critic_%d' % self.agent_index
         self.target_critic = target_critic
 
         # Create networks and core TF parts that are shared across setup parts.
@@ -230,14 +237,14 @@ class MADDPG(object):
 
         # Configure perturbed actor.
         param_noise_actor = copy(self.actor)
-        param_noise_actor.name = 'param_noise_actor'
+        param_noise_actor.name = 'param_noise_actor_%d' % self.agent_index
         self.perturbed_actor_tf = param_noise_actor(normalized_obs0)
         logger.info('setting up param noise')
         self.perturb_policy_ops = get_perturbed_actor_updates(self.actor, param_noise_actor, self.param_noise_stddev)
 
         # Configure separate copy for stddev adoption.
         adaptive_param_noise_actor = copy(self.actor)
-        adaptive_param_noise_actor.name = 'adaptive_param_noise_actor'
+        adaptive_param_noise_actor.name = 'adaptive_param_noise_actor_%d' % self.agent_index
         adaptive_actor_tf = adaptive_param_noise_actor(normalized_obs0)
         self.perturb_adaptive_policy_ops = get_perturbed_actor_updates(self.actor, adaptive_param_noise_actor, self.param_noise_stddev)
         self.adaptive_policy_distance = tf.sqrt(tf.reduce_mean(tf.square(self.actor_tf - adaptive_actor_tf)))
@@ -403,8 +410,11 @@ class MADDPG(object):
             act_n.append(batch['actions'])
         batch = self.memory.sample(batch_size=self.batch_size, index=replay_sample_index)
 
+        # obs0_n_dict={ph: data for ph, data in zip(self.obs0, obs0_n)}
+        # obs1_n_dict={ph: data for ph, data in zip(self.obs1, obs1_n)}
         # get target actions for each agent using obs1
         for i in range(self.num_agents):
+            # target_obs1_n_dict={ph: data for ph, data in zip(agents[i].obs1, obs1_n)}
             target_acts = self.sess.run(agents[i].target_actor_tf, feed_dict={agents[i].obs1: obs1_n})
             # save the batch of target actions
             target_act_n.append(target_acts)
@@ -416,6 +426,7 @@ class MADDPG(object):
 
         # feed dict for target_Q calculation
         feed_dict = {self.obs1: obs1_n}
+        # feed_dict = obs1_n_dict
         feed_dict.update(target_act_dict)
         feed_dict.update({self.rewards: batch['rewards']})
         feed_dict.update({self.terminals1: batch['terminals1'].astype('float32')})
@@ -456,6 +467,7 @@ class MADDPG(object):
 
         # generate feed_dict for gradient and loss computation
         feed_dict = {self.obs0: obs0_n}
+        # feed_dict = obs0_n_dict
         feed_dict.update(act_dict)
         feed_dict.update({self.critic_target: target_Q})
 

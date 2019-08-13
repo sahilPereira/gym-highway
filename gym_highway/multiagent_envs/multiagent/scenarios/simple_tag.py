@@ -1,6 +1,6 @@
 import numpy as np
-from multiagent.core import World, Agent, Landmark
-from multiagent.scenario import BaseScenario
+from gym_highway.multiagent_envs.multiagent.core import World, Agent, Landmark
+from gym_highway.multiagent_envs.multiagent.scenario import BaseScenario
 
 
 class Scenario(BaseScenario):
@@ -144,4 +144,6 @@ class Scenario(BaseScenario):
             other_pos.append(other.state.p_pos - agent.state.p_pos)
             if not other.adversary:
                 other_vel.append(other.state.p_vel)
+            else:
+                other_vel.append(np.zeros(world.dim_p))
         return np.concatenate([agent.state.p_vel] + [agent.state.p_pos] + entity_pos + other_pos + other_vel)
