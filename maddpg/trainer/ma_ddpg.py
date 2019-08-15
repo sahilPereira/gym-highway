@@ -133,7 +133,7 @@ def learn(network, env,
             gamma=gamma, tau=tau, normalize_returns=normalize_returns, normalize_observations=normalize_observations,
             batch_size=batch_size, action_noise=action_noise, param_noise=param_noise, critic_l2_reg=critic_l2_reg,
             actor_lr=actor_lr, critic_lr=critic_lr, enable_popart=popart, clip_norm=clip_norm,
-            reward_scale=reward_scale, leaders=trainers)
+            reward_scale=reward_scale, followers=trainers[i+1:])
         
         # Prepare agent
         agent.initialize(sess)
@@ -272,6 +272,7 @@ def learn(network, env,
                     epoch_critic_losses[i].append(cl)
                     epoch_actor_losses[i].append(al)
                     agent.update_target_net()
+                    agent.update_follower_net()
 
             # Evaluate.
             eval_episode_rewards = []

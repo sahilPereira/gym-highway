@@ -53,6 +53,7 @@ class HighwaySimulator:
 
         self.is_done = None
         self.reward = None
+        self.lateral_offset = True
         
         # reset simulator states
         # self.reset()
@@ -257,10 +258,11 @@ class HighwaySimulator:
         self.reward = [0.0]*len(self.policy_agents_data)
 
         # pause game when needed
-        for e in pygame.event.get():
-            if e.type == pygame.QUIT:
-                # self.is_done = True
-                self.close()
+        if self.render:
+            for e in pygame.event.get():
+                if e.type == pygame.QUIT:
+                    # self.is_done = True
+                    self.close()
 
         if self.is_paused:
             if self.render:
@@ -306,6 +308,7 @@ class HighwaySimulator:
                     # add new obstacle
                     rand_pos_x = float(random.uniform(70, 100))
                     rand_pos_y = Constants.NEW_LANES[lane]
+                    rand_pos_y += random.uniform(-20,20)/Constants.ppu if self.lateral_offset else 0.0
                     rand_vel_x = float(random.uniform(5, 7))
                     rand_lane_id = lane+1
 
