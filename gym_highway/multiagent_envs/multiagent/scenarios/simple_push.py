@@ -1,14 +1,15 @@
 import numpy as np
-from multiagent.core import World, Agent, Landmark
-from multiagent.scenario import BaseScenario
+from gym_highway.multiagent_envs.multiagent.core import World, Agent, Landmark
+from gym_highway.multiagent_envs.multiagent.scenario import BaseScenario
 
 class Scenario(BaseScenario):
     def make_world(self):
         world = World()
         # set any world properties first
         world.dim_c = 2
-        num_agents = 2
+        num_good_agents = 1
         num_adversaries = 1
+        num_agents = num_adversaries + num_good_agents
         num_landmarks = 2
         # add agents
         world.agents = [Agent() for i in range(num_agents)]
@@ -16,10 +17,7 @@ class Scenario(BaseScenario):
             agent.name = 'agent %d' % i
             agent.collide = True
             agent.silent = True
-            if i < num_adversaries:
-                agent.adversary = True
-            else:
-                agent.adversary = False
+            agent.adversary = True if i < num_adversaries else False
         # add landmarks
         world.landmarks = [Landmark() for i in range(num_landmarks)]
         for i, landmark in enumerate(world.landmarks):
@@ -90,7 +88,8 @@ class Scenario(BaseScenario):
             comm.append(other.state.c)
             other_pos.append(other.state.p_pos - agent.state.p_pos)
         if not agent.adversary:
-            return np.concatenate([agent.state.p_vel] + [agent.goal_a.state.p_pos - agent.state.p_pos] + [agent.color] + entity_pos + entity_color + other_pos)
+            # return np.concatenate([agent.state.p_vel] + [agent.goal_a.state.p_pos - agent.state.p_pos] + [agent.color] + entity_pos + entity_color + other_pos)
+            return np.concatenate([agent.state.p_vel] + [agent.state.p_pos] + entity_pos + other_pos)
         else:
             #other_pos = list(reversed(other_pos)) if random.uniform(0,1) > 0.5 else other_pos  # randomize position of other agents in adversary network
-            return np.concatenate([agent.state.p_vel] + entity_pos + other_pos)
+            return np.concatenate([agent.state.p_vel] + [agent.state.p_pos] + entity_pos + other_pos)

@@ -87,7 +87,7 @@ def learn(network, env,
     set_global_seeds(seed)
 
     continuous_ctrl = not isinstance(env.action_space[0], spaces.Discrete)
-    # assert continuous_ctrl
+    assert continuous_ctrl
     
     nb_actions = env.action_space[0].shape[-1] if continuous_ctrl else env.action_space[0].n
     
