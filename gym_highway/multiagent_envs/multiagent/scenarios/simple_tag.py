@@ -145,4 +145,4 @@ class Scenario(BaseScenario):
                 other_vel.append(other.state.p_vel)
             else:
                 other_vel.append(np.zeros(world.dim_p))
-        return np.concatenate([agent.state.p_vel] + [agent.state.p_pos] + entity_pos + other_pos + other_vel)
+        return np.concatenate([agent.state.p_vel] + [agent.state.p_pos] + entity_pos + other_pos + other_vel + comm)
