@@ -18,7 +18,7 @@ class MultiAgentEnv(gym.Env):
                  observation_callback=None, info_callback=None,
                  done_callback=None, shared_reward=False):
 
-        # scenario = Scenario()
+        # scenario = ScenarioSorted()
         scenario = ScenarioBlocking()
         # create world
         self.world = scenario.make_world(num_agents, world_config)

@@ -201,7 +201,7 @@ def learn(network, env,
                     agent.reset()
             for t_rollout in range(nb_rollout_steps):
                 actions_n = []
-                q_n = np.zeros(len(trainers), dtype = np.float32)
+                # q_n = np.zeros(len(trainers), dtype = np.float32)
                 for i in range(nenvs):
                     # create n copies of full obs where n = num agents; memory is not an issue for this simulation
                     rep_obs = np.stack([obs_n[i] for _ in range(len(trainers))])
