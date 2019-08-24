@@ -226,8 +226,9 @@ def learn(network, env,
                     agent.store_transition(obs_n, actions_n, rew_n, new_obs_n, done_n)
                 obs_n = new_obs_n
 
-                # time.sleep(0.1)
-                # env.render()
+                if render:
+                    time.sleep(0.1)
+                    env.render()
                 
                 # update timestep
                 t += 1
