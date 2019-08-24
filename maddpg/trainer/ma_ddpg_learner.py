@@ -77,7 +77,7 @@ class MADDPG(object):
     def __init__(self, name, actor, critic, memory, obs_space_n, act_space_n, agent_index, obs_rms, param_noise=None, action_noise=None,
         gamma=0.99, tau=0.001, normalize_returns=False, enable_popart=False, normalize_observations=True,
         batch_size=128, observation_range=(-5., 5.), action_range=(-1., 1.), return_range=(-np.inf, np.inf),
-        critic_l2_reg=0., actor_lr=1e-4, critic_lr=1e-3, clip_norm=None, reward_scale=1.):
+        critic_l2_reg=0., actor_lr=1e-4, critic_lr=1e-3, clip_norm=None, reward_scale=1., followers=None):
         self.name = name
         self.num_agents = len(obs_space_n)
         self.agent_index = agent_index
@@ -140,6 +140,7 @@ class MADDPG(object):
         self.batch_size = batch_size
         self.stats_sample = None
         self.critic_l2_reg = critic_l2_reg
+        self.followers = followers
 
         # Observation normalization.
         # TODO: need to update the replay buffer storage function to account for multiple agents
@@ -198,6 +199,31 @@ class MADDPG(object):
         # need to provide critic() with all actions
         act_input_n = self.actions + [] # copy actions
         act_input_n[self.agent_index] = self.actor_tf # update current agent action using its actor
+
+        # update follower actions with follower policy
+        self.follower_actors = []
+        self.follower_actor_tf = []
+        # NOTE: still only works for 2 agents because of the way we replace the actions in the obs
+        for i in range(len(self.followers)):
+            # create a copy of the follower policy
+            follower = self.followers[i]
+            follower_actor = copy(follower.actor)
+            # need to create a follower copy for each leader, since they update different actions
+            follower_actor.name = 'follower_actor_%d_p%d' % (follower.agent_index, self.agent_index)
+            self.follower_actors.append(follower_actor)
+
+            # update the follower observations
+            # 1. Get the observations for the follower
+            obs_f = normalized_act_obs0[follower.agent_index]
+            # 2. Filter out the communication info
+            # slice off the end of the observation, corresponding to the size of the action
+            obs_f_sliced = tf.slice(obs_f, [0, 0], [-1, obs_shape_list[-1]-act_shape_list[-1]], name='pslice_%d_p%d'%(follower.agent_index, self.agent_index))
+            # 3. Replace comm info with output of leader policy
+            obs_f_updated = tf.concat([obs_f_sliced, self.actor_tf], axis=1, name='pconcat_%d_p%d'%(follower.agent_index, self.agent_index))
+            # 4. replace current follower action with follower policy
+            self.follower_actor_tf.append(follower_actor(obs_f_updated))
+            act_input_n[follower.agent_index] = self.follower_actor_tf[-1]
+        
         act_input_n_t = tf.transpose(act_input_n, perm=[1, 0, 2])
         act_input_n_t_flat = tf.reshape(act_input_n_t, [-1, self.act_shape_prod])
         self.normalized_critic_with_actor_tf = critic(normalized_obs0_flat, act_input_n_t_flat, reuse=True)
@@ -223,6 +249,7 @@ class MADDPG(object):
             self.setup_popart()
         self.setup_stats()
         self.setup_target_network_updates()
+        self.setup_follower_network_updates()
 
         self.initial_state = None # recurrent architectures not supported yet
 
@@ -231,6 +258,19 @@ class MADDPG(object):
         critic_init_updates, critic_soft_updates = get_target_updates(self.critic.vars, self.target_critic.vars, self.tau)
         self.target_init_updates = [actor_init_updates, critic_init_updates]
         self.target_soft_updates = [actor_soft_updates, critic_soft_updates]
+
+    def setup_follower_network_updates(self):
+        '''
+        Update follower actor copy vars with actual follower actor vars
+        '''
+        self.follower_init_updates = []
+        self.follower_soft_updates = []
+        for i in range(len(self.followers)):
+            follower = self.followers[i]
+            follower_actor_copy = self.follower_actors[i]
+            follower_actor_init_updates, follower_actor_soft_updates = get_target_updates(follower.actor.vars, follower_actor_copy.vars, self.tau)
+            self.follower_init_updates.append(follower_actor_init_updates)
+            self.follower_soft_updates.append(follower_actor_soft_updates)
 
     def setup_param_noise(self, normalized_obs0):
         assert self.param_noise is not None
@@ -485,12 +525,16 @@ class MADDPG(object):
         self.actor_optimizer.sync()
         self.critic_optimizer.sync()
         self.sess.run(self.target_init_updates)
+        self.sess.run(self.follower_init_updates)
         # setup saving and loading functions
         self.save = functools.partial(save_variables, sess=sess)
         self.load = functools.partial(load_variables, sess=sess)
 
     def update_target_net(self):
         self.sess.run(self.target_soft_updates)
+
+    def update_follower_net(self):
+        self.sess.run(self.follower_soft_updates)
 
     def get_stats(self, agents):
         if self.stats_sample is None:

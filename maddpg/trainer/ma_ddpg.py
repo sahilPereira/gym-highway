@@ -127,12 +127,14 @@ def learn(network, env,
 
         # TODO: remove after testing
         assert param_noise is not None
+        followers = [] if env.agents[i].adversary else trainers[:i]
+        print("Agent [{}], Adversary: [{}], Num followers: [{}]".format(i, env.agents[i].adversary, len(followers)))
 
         agent = MADDPG("agent_%d" % i, actor, critic, memory, env.observation_space, env.action_space, i, obs_rms,
             gamma=gamma, tau=tau, normalize_returns=normalize_returns, normalize_observations=normalize_observations,
             batch_size=batch_size, action_noise=action_noise, param_noise=param_noise, critic_l2_reg=critic_l2_reg,
             actor_lr=actor_lr, critic_lr=critic_lr, enable_popart=popart, clip_norm=clip_norm,
-            reward_scale=reward_scale)
+            reward_scale=reward_scale, followers=followers)
         
         # Prepare agent
         agent.initialize(sess)
@@ -226,8 +228,9 @@ def learn(network, env,
                     agent.store_transition(obs_n, actions_n, rew_n, new_obs_n, done_n)
                 obs_n = new_obs_n
 
-                # time.sleep(0.1)
-                # env.render()
+                if render:
+                    time.sleep(0.1)
+                    env.render()
                 
                 # update timestep
                 t += 1
@@ -266,6 +269,7 @@ def learn(network, env,
                     epoch_critic_losses[i].append(cl)
                     epoch_actor_losses[i].append(al)
                     agent.update_target_net()
+                    agent.update_follower_net()
 
             # Evaluate.
             eval_episode_rewards = []
