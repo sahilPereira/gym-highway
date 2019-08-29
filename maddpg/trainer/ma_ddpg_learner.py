@@ -452,6 +452,15 @@ class MADDPG(object):
         # get target actions for leading agents using obs1
         for i in range(self.num_agents):
             # if i <= self.agent_index:
+            # update follower obs comm part with leader target acts
+            # currently only works with 2 agents
+            if i > 0:
+                # get follower observations
+                obs_f = obs1_n[i]
+                # currenly only replaces actions from one leader
+                obs_f[:, -2:] = target_act_n[i-1]
+                obs1_n[i] = obs_f
+
             target_acts = self.sess.run(agents[i].target_actor_tf, feed_dict={agents[i].obs1: obs1_n})
             # save the batch of target actions
             target_act_n.append(target_acts)
