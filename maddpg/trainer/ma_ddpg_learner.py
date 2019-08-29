@@ -441,7 +441,6 @@ class MADDPG(object):
         obs0_n = []
         obs1_n = []
         act_n = []
-        target_act_n = []
         for i in range(self.num_agents):
             # Get a batch.
             batch = agents[i].memory.sample(batch_size=self.batch_size, index=replay_sample_index)
@@ -453,11 +452,21 @@ class MADDPG(object):
         # obs0_n_dict={ph: data for ph, data in zip(self.obs0, obs0_n)}
         # obs1_n_dict={ph: data for ph, data in zip(self.obs1, obs1_n)}
         # get target actions for each agent using obs1
-        for i in range(self.num_agents):
+        target_act_n = [[0.0,0.0]]*self.num_agents
+        for i in range(self.num_agents-1, -1, -1):
+            # update follower obs comm part with leader target acts
+            # currently only works with 2 agents
+            if i < self.num_agents-1:
+                # get follower observations
+                obs_f = obs1_n[i]
+                # currenly only replaces actions from one leader
+                obs_f[:, -2:] = target_act_n[-1]
+                obs1_n[i] = obs_f
+            
             # target_obs1_n_dict={ph: data for ph, data in zip(agents[i].obs1, obs1_n)}
             target_acts = self.sess.run(agents[i].target_actor_tf, feed_dict={agents[i].obs1: obs1_n})
             # save the batch of target actions
-            target_act_n.append(target_acts)
+            target_act_n[i] = target_acts
         
         # fill placeholders in obs1 with corresponding obs from each agent's replay buffer
         # self.obs1 and obs1_n are lists of size num_agents
