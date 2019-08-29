@@ -208,10 +208,22 @@ def learn(network, env,
             
             # Perform rollouts.
             for t_rollout in range(nb_rollout_steps):
-                actions_n = []
-
-                rep_obs = np.stack([obs_n for _ in range(num_agents)])
-                actions_n = [agent.step(obs, apply_noise=True, compute_Q=False)[0] for agent, obs in zip(trainers, rep_obs)]
+                actions_n = [[0.0,0.0]]*num_agents
+                for j in range(num_agents-1, -1, -1):
+                    agent = trainers[j]
+                    # update follower obs comm part with leader target acts
+                    # currently only works with 2 agents
+                    if j < num_agents-1:
+                        # get follower observations
+                        obs_f = obs_n[j]
+                        # currenly only replaces actions from one leader
+                        obs_f[-2:] = actions_n[-1]
+                        obs_n[j] = obs_f
+                    acts = agent.step(obs_n, apply_noise=True, compute_Q=False)[0]
+                    actions_n[j] = acts
+                
+                # rep_obs = np.stack([obs_n for _ in range(num_agents)])
+                # actions_n = [agent.step(obs, apply_noise=True, compute_Q=False)[0] for agent, obs in zip(trainers, rep_obs)]
                 
                 # confirm actions_n is nenvs x num_agents x len(Action)
                 # assert (len(actions_n),len(actions_n[0]),len(actions_n[0][0])) == (nenvs, num_agents, nb_actions)
