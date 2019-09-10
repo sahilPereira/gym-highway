@@ -68,6 +68,7 @@ def learn(network, env,
           critic_l2_reg=1e-2,
           actor_lr=1e-4,
           critic_lr=1e-3,
+          follower_grad_scale=1.,
           popart=False,
           gamma=0.99,
           clip_norm=None,
@@ -134,7 +135,7 @@ def learn(network, env,
             gamma=gamma, tau=tau, normalize_returns=normalize_returns, normalize_observations=normalize_observations,
             batch_size=batch_size, action_noise=action_noise, param_noise=param_noise, critic_l2_reg=critic_l2_reg,
             actor_lr=actor_lr, critic_lr=critic_lr, enable_popart=popart, clip_norm=clip_norm,
-            reward_scale=reward_scale, followers=followers)
+            reward_scale=reward_scale, follower_grad_scale=follower_grad_scale, followers=followers)
         
         # Prepare agent
         agent.initialize(sess)
@@ -208,22 +209,23 @@ def learn(network, env,
             
             # Perform rollouts.
             for t_rollout in range(nb_rollout_steps):
-                actions_n = [[0.0,0.0]]*num_agents
-                for j in range(num_agents-1, -1, -1):
-                    agent = trainers[j]
-                    # update follower obs comm part with leader target acts
-                    # currently only works with 2 agents
-                    if j < num_agents-1:
-                        # get follower observations
-                        obs_f = obs_n[j]
-                        # currenly only replaces actions from one leader
-                        obs_f[-2:] = actions_n[-1]
-                        obs_n[j] = obs_f
-                    acts = agent.step(obs_n, apply_noise=True, compute_Q=False)[0]
-                    actions_n[j] = acts
+                # # TODO: test without replacing communication information
+                # actions_n = [[0.0,0.0]]*num_agents
+                # for j in range(num_agents-1, -1, -1):
+                #     agent = trainers[j]
+                #     # update follower obs comm part with leader target acts
+                #     # currently only works with 2 agents
+                #     if j < num_agents-1:
+                #         # get follower observations
+                #         obs_f = obs_n[j]
+                #         # currenly only replaces actions from one leader
+                #         obs_f[-2:] = actions_n[-1]
+                #         obs_n[j] = obs_f
+                #     acts = agent.step(obs_n, apply_noise=True, compute_Q=False)[0]
+                #     actions_n[j] = acts
 
-                # rep_obs = np.stack([obs_n for _ in range(num_agents)])
-                # actions_n = [agent.step(obs, apply_noise=True, compute_Q=False)[0] for agent, obs in zip(trainers, rep_obs)]
+                rep_obs = np.stack([obs_n for _ in range(num_agents)])
+                actions_n = [agent.step(obs, apply_noise=True, compute_Q=False)[0] for agent, obs in zip(trainers, rep_obs)]
                 
                 # confirm actions_n is nenvs x num_agents x len(Action)
                 # assert (len(actions_n),len(actions_n[0]),len(actions_n[0][0])) == (nenvs, num_agents, nb_actions)
