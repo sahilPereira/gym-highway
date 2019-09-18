@@ -318,7 +318,7 @@ class MADDPG(object):
         # Normalize follower gradients by number of followers
         actor_follower_grads_norm = tf.scalar_mul(num_followers_scaling_var, self.actor_follower_grads)
         # actor_follower_grads_l1norm = tf.norm(actor_follower_grads_norm, ord=1)
-        actor_follower_grads_l2norm = tf.nn.l2_normalize(actor_follower_grads_norm)
+        actor_follower_grads_l2norm = tf.nn.l2_normalize(actor_follower_grads_norm, epsilon=1.0)
         # actor_follower_grads_final = tf.divide(actor_follower_grads_norm, actor_follower_grads_l2norm)
 
         # Scale follower gradients by follower scaling factor
@@ -473,12 +473,14 @@ class MADDPG(object):
         # collect replay sample from all agents
         obs0_n = []
         obs1_n = []
+        obs1_target_n = []
         act_n = []
         for i in range(self.num_agents):
             # Get a batch.
             batch = agents[i].memory.sample(batch_size=self.batch_size, index=replay_sample_index)
             obs0_n.append(batch['obs0'])
             obs1_n.append(batch['obs1'])
+            obs1_target_n.append(batch['obs1'])
             act_n.append(batch['actions'])
         batch = self.memory.sample(batch_size=self.batch_size, index=replay_sample_index)
 
@@ -491,13 +493,13 @@ class MADDPG(object):
             # currently only works with 2 agents
             if i < self.num_agents-1:
                 # get follower observations
-                obs_f = obs1_n[i]
+                obs_f = obs1_target_n[i]
                 # currenly only replaces actions from one leader
                 obs_f[:, -2:] = target_act_n[-1]
-                obs1_n[i] = obs_f
+                obs1_target_n[i] = obs_f
             
             # target_obs1_n_dict={ph: data for ph, data in zip(agents[i].obs1, obs1_n)}
-            target_acts = self.sess.run(agents[i].target_actor_tf, feed_dict={agents[i].obs1: obs1_n})
+            target_acts = self.sess.run(agents[i].target_actor_tf, feed_dict={agents[i].obs1: obs1_target_n})
             # save the batch of target actions
             target_act_n[i] = target_acts
         
