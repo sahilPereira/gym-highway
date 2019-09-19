@@ -81,15 +81,16 @@ class Scenario(BaseScenario):
         for entity in world.landmarks:  # world.entities:
             entity_color.append(entity.color)
         # communication of all other agents
-        comm = []
+        comm = [[0.0,0.0]] # only leader communicating its action
         other_pos = []
         for other in world.agents:
             if other is agent: continue
-            comm.append(other.state.c)
+            if (not other.adversary) and (other.action.u is not None):
+                comm[0] = list(other.action.u) # there should only be one leader
             other_pos.append(other.state.p_pos - agent.state.p_pos)
         if not agent.adversary:
             # return np.concatenate([agent.state.p_vel] + [agent.goal_a.state.p_pos - agent.state.p_pos] + [agent.color] + entity_pos + entity_color + other_pos)
-            return np.concatenate([agent.state.p_vel] + [agent.state.p_pos] + entity_pos + other_pos)
+            return np.concatenate([agent.state.p_vel] + [agent.state.p_pos] + entity_pos + other_pos + comm)
         else:
             #other_pos = list(reversed(other_pos)) if random.uniform(0,1) > 0.5 else other_pos  # randomize position of other agents in adversary network
-            return np.concatenate([agent.state.p_vel] + [agent.state.p_pos] + entity_pos + other_pos)
+            return np.concatenate([agent.state.p_vel] + [agent.state.p_pos] + entity_pos + other_pos + comm)
