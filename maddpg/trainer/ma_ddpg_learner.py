@@ -77,7 +77,7 @@ class MADDPG(object):
     def __init__(self, name, actor, critic, memory, obs_space_n, act_space_n, agent_index, obs_rms, param_noise=None, action_noise=None,
         gamma=0.99, tau=0.001, normalize_returns=False, enable_popart=False, normalize_observations=True,
         batch_size=128, observation_range=(-5., 5.), action_range=(-1., 1.), return_range=(-np.inf, np.inf),
-        critic_l2_reg=0., actor_lr=1e-4, critic_lr=1e-3, clip_norm=None, reward_scale=1., followers=None):
+        critic_l2_reg=0., actor_lr=1e-4, critic_lr=1e-3, clip_norm=None, reward_scale=1., follower_grad_scale=0., followers=None):
         self.name = name
         self.num_agents = len(obs_space_n)
         self.agent_index = agent_index
@@ -133,6 +133,8 @@ class MADDPG(object):
         self.stats_sample = None
         self.critic_l2_reg = critic_l2_reg
         self.followers = followers
+        self.num_followers_scaling = 1.0/len(followers) if followers else 0.0
+        self.follower_grad_scale = follower_grad_scale
 
         # Observation normalization.
         # TODO: need to update the replay buffer storage function to account for multiple agents
@@ -191,11 +193,16 @@ class MADDPG(object):
         # need to provide critic() with all actions
         act_input_n = self.actions + [] # copy actions
         act_input_n[self.agent_index] = self.actor_tf # update current agent action using its actor
-        
-        # update follower actions with follower policy
+        act_input_n_t = tf.transpose(act_input_n, perm=[1, 0, 2])
+        act_input_n_t_flat = tf.reshape(act_input_n_t, [-1, self.act_shape_prod])
+        self.normalized_critic_with_actor_tf = critic(normalized_obs0_flat, act_input_n_t_flat, reuse=True)
+        self.critic_with_actor_tf = denormalize(tf.clip_by_value(self.normalized_critic_with_actor_tf, self.return_range[0], self.return_range[1]), self.ret_rms)
+
+        # Setup critic with follower actions with follower policy
+        follower_act_input_n = self.actions + [] # copy actions
         self.follower_actors = []
         self.follower_actor_tf = []
-        # NOTE: still only works for 2 agents because of the way we replace the actions in the obs
+        # NOTE: still only works for 2 levels of hierarchy because of the way we replace the actions in the obs
         for i in range(len(self.followers)):
             # create a copy of the follower policy
             follower = self.followers[i]
@@ -214,12 +221,11 @@ class MADDPG(object):
             obs_f_updated = tf.concat([obs_f_sliced, self.actor_tf], axis=1, name='pconcat_%d_p%d'%(follower.agent_index, self.agent_index))
             # 4. replace current follower action with follower policy
             self.follower_actor_tf.append(follower_actor(obs_f_updated))
-            act_input_n[follower.agent_index] = self.follower_actor_tf[-1]
-
-        act_input_n_t = tf.transpose(act_input_n, perm=[1, 0, 2])
-        act_input_n_t_flat = tf.reshape(act_input_n_t, [-1, self.act_shape_prod])
-        self.normalized_critic_with_actor_tf = critic(normalized_obs0_flat, act_input_n_t_flat, reuse=True)
-        self.critic_with_actor_tf = denormalize(tf.clip_by_value(self.normalized_critic_with_actor_tf, self.return_range[0], self.return_range[1]), self.ret_rms)
+            follower_act_input_n[follower.agent_index] = self.follower_actor_tf[-1]
+        follower_act_input_n_t = tf.transpose(follower_act_input_n, perm=[1, 0, 2])
+        follower_act_input_n_t_flat = tf.reshape(follower_act_input_n_t, [-1, self.act_shape_prod])
+        self.normalized_critic_with_follower_actor_tf = critic(normalized_obs0_flat, follower_act_input_n_t_flat, reuse=True)
+        self.critic_with_follower_actor_tf = denormalize(tf.clip_by_value(self.normalized_critic_with_follower_actor_tf, self.return_range[0], self.return_range[1]), self.ret_rms)
 
         # we need to use actions for all agents
         # target_act_input_n = self.actions + [] # copy actions
@@ -283,12 +289,34 @@ class MADDPG(object):
 
     def setup_actor_optimizer(self):
         logger.info('setting up actor optimizer')
-        self.actor_loss = -tf.reduce_mean(self.critic_with_actor_tf)
+        self.actor_primary_loss = -tf.reduce_mean(self.critic_with_actor_tf)
+        # Update: added actor follower contribution to loss
+        self.actor_follower_loss = -tf.reduce_mean(self.critic_with_follower_actor_tf)
+        self.actor_loss = tf.add(self.actor_primary_loss, self.actor_follower_loss)
+
         actor_shapes = [var.get_shape().as_list() for var in self.actor.trainable_vars]
         actor_nb_params = sum([reduce(lambda x, y: x * y, shape) for shape in actor_shapes])
         logger.info('  actor shapes: {}'.format(actor_shapes))
         logger.info('  actor params: {}'.format(actor_nb_params))
-        self.actor_grads = U.flatgrad(self.actor_loss, self.actor.trainable_vars, clip_norm=self.clip_norm)
+        self.actor_primary_grads = U.flatgrad(self.actor_primary_loss, self.actor.trainable_vars, clip_norm=self.clip_norm)
+        # Update: gradient resulting from followers conditioning on agent actions
+        self.actor_follower_grads = U.flatgrad(self.actor_follower_loss, self.actor.trainable_vars, clip_norm=self.clip_norm)
+        # Update: scale the follower gradient contribution based on number of followers
+        num_followers_scaling_var = tf.Variable(self.num_followers_scaling, tf.float32, name='num_followers_agent_%d' % self.agent_index)
+        follower_grad_scale_var = tf.Variable(self.follower_grad_scale, tf.float32)
+
+
+        # print("self.actor_follower_grads shape: ", self.actor_follower_grads.shape)
+        # Normalize follower gradients by number of followers
+        actor_follower_grads_norm = tf.scalar_mul(num_followers_scaling_var, self.actor_follower_grads)
+        # actor_follower_grads_l1norm = tf.norm(actor_follower_grads_norm, ord=1)
+        actor_follower_grads_l2norm = tf.nn.l2_normalize(actor_follower_grads_norm, epsilon=1.0)
+        # actor_follower_grads_final = tf.divide(actor_follower_grads_norm, actor_follower_grads_l2norm)
+
+        # Scale follower gradients by follower scaling factor
+        self.scaled_actor_follower_grads = tf.scalar_mul(follower_grad_scale_var, actor_follower_grads_l2norm)
+        self.actor_grads = tf.add(self.actor_primary_grads, self.scaled_actor_follower_grads)
+
         self.actor_optimizer = MpiAdam(var_list=self.actor.trainable_vars,
             beta1=0.9, beta2=0.999, epsilon=1e-08)
 
@@ -353,6 +381,11 @@ class MADDPG(object):
         names += ['reference_actor_Q_mean']
         ops += [reduce_std(self.critic_with_actor_tf)]
         names += ['reference_actor_Q_std']
+
+        ops += [tf.reduce_mean(self.critic_with_follower_actor_tf)]
+        names += ['reference_actor_follower_Q_mean']
+        ops += [reduce_std(self.critic_with_follower_actor_tf)]
+        names += ['reference_actor_follower_Q_std']
 
         ops += [tf.reduce_mean(self.actor_tf)]
         names += ['reference_action_mean']
@@ -452,15 +485,6 @@ class MADDPG(object):
         # get target actions for leading agents using obs1
         for i in range(self.num_agents):
             # if i <= self.agent_index:
-            # update follower obs comm part with leader target acts
-            # currently only works with 2 agents
-            if i > 0:
-                # get follower observations
-                obs_f = obs1_n[i]
-                # currenly only replaces actions from one leader
-                obs_f[:, -2:] = target_act_n[i-1]
-                obs1_n[i] = obs_f
-
             target_acts = self.sess.run(agents[i].target_actor_tf, feed_dict={agents[i].obs1: obs1_n})
             # save the batch of target actions
             target_act_n.append(target_acts)

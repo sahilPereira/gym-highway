@@ -67,6 +67,7 @@ def learn(network, env,
           critic_l2_reg=1e-2,
           actor_lr=1e-4,
           critic_lr=1e-3,
+          follower_grad_scale=1.,
           popart=False,
           gamma=0.99,
           clip_norm=None,
@@ -133,7 +134,7 @@ def learn(network, env,
             gamma=gamma, tau=tau, normalize_returns=normalize_returns, normalize_observations=normalize_observations,
             batch_size=batch_size, action_noise=action_noise, param_noise=param_noise, critic_l2_reg=critic_l2_reg,
             actor_lr=actor_lr, critic_lr=critic_lr, enable_popart=popart, clip_norm=clip_norm,
-            reward_scale=reward_scale, followers=trainers[i+1:])
+            reward_scale=reward_scale, follower_grad_scale=follower_grad_scale, followers=trainers[i+1:])
         
         # Prepare agent
         agent.initialize(sess)
@@ -199,32 +200,18 @@ def learn(network, env,
                 # of the environments, so resetting here instead
                 for agent in trainers:
                     agent.reset()
-            for t_rollout in range(nb_rollout_steps):
+            for t_rollout in range(nb_rollout_steps):                
                 actions_n = []
                 # q_n = np.zeros(len(trainers), dtype = np.float32)
                 for i in range(nenvs):
-                    action_q_list = []
-                    for j in range(len(trainers)):
-                        agent = trainers[j]
-                        # update follower obs comm part with leader target acts
-                        # currently only works with 2 agents
-                        if j > 0:
-                            # get follower observations
-                            obs_f = obs_n[i][j]
-                            # currenly only replaces actions from one leader
-                            obs_f[-2:] = action_q_list[j-1]
-                            obs_n[i][j] = obs_f
-                        acts = agent.step(obs_n[i], apply_noise=True, compute_Q=False)[0]
-                        action_q_list.append(acts)
-
                     # create n copies of full obs where n = num agents; memory is not an issue for this simulation
-                    # rep_obs = np.stack([obs_n[i] for _ in range(len(trainers))])
+                    rep_obs = np.stack([obs_n[i] for _ in range(len(trainers))])
                     # Predict next actions and q vals for all agents in current env
                     # call step() with each agent and full observation; only get action "[0]" from this call
-                    # action_q_list = [agent.step(obs, apply_noise=True, compute_Q=False)[0] for agent, obs in zip(trainers, rep_obs)]
+                    action_q_list = [agent.step(obs, apply_noise=True, compute_Q=False)[0] for agent, obs in zip(trainers, rep_obs)]
                     # store actions and q vals in respective lists
                     actions_n.append(action_q_list)
-                
+
                 # confirm actions_n is nenvs x num_agents x len(Action)
                 assert (len(actions_n),len(actions_n[0]),len(actions_n[0][0])) == (nenvs, num_agents, nb_actions)
 
