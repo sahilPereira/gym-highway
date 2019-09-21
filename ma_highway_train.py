@@ -386,3 +386,38 @@ if __name__ == '__main__':
 
     model, env = train(args, extra_args)
     env.close()
+
+    if args.test:
+        logger.log("Running trained model")
+        env = make_env(args.scenario, args)
+        obs_n = env.reset()
+
+        state = model[0].initial_state if hasattr(model[0], 'initial_state') else None
+        dones = np.zeros((args.num_agents,))
+
+        # print(obs_n)
+
+        while True:
+            for _ in range(extra_args['nb_rollout_steps']):
+                actions_n = []
+                if state is not None:
+                    actions, _, state, _ = model[0].step(obs, S=state, M=dones)
+                else:
+                    # for MA_DDPG
+                    # NOTE: DO NOT APPLY NOISE DURIG TESTING (APPLY NOISE ONLY USED FOR TRAINING)
+                    actions_n = [agent.step(obs_n, apply_noise=False, compute_Q=False)[0] for agent in model]
+                # actions_n.append(actions)
+                # print(actions_n)
+                obs_n, _, done, _ = env.step(actions_n)
+
+                # Not required since the gym highway environment renders based on init param
+                # env.render()
+                time.sleep(0.1)
+                env.render()
+
+                # done = done.any() if isinstance(done, np.ndarray) else done
+
+            # if done:
+            obs_n = env.reset()
+
+        env.close()

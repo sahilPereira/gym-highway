@@ -68,6 +68,7 @@ def learn(network, env,
           critic_l2_reg=1e-2,
           actor_lr=1e-4,
           critic_lr=1e-3,
+          follower_grad_scale=1.,
           popart=False,
           gamma=0.99,
           clip_norm=None,
@@ -134,7 +135,7 @@ def learn(network, env,
             gamma=gamma, tau=tau, normalize_returns=normalize_returns, normalize_observations=normalize_observations,
             batch_size=batch_size, action_noise=action_noise, param_noise=param_noise, critic_l2_reg=critic_l2_reg,
             actor_lr=actor_lr, critic_lr=critic_lr, enable_popart=popart, clip_norm=clip_norm,
-            reward_scale=reward_scale, followers=followers)
+            reward_scale=reward_scale, follower_grad_scale=follower_grad_scale, followers=followers)
         
         # Prepare agent
         agent.initialize(sess)
