@@ -83,7 +83,7 @@ class ScenarioBlocking(BaseScenario):
                 agent_rewards[i] = (agent.velocity.x / agent.max_velocity) - 1.0
 
                 # penalize follower based on position
-                agent_rewards[i] -= 0.5*i
+                # agent_rewards[i] -= 0.5*i
         
         self.current_rewards = agent_rewards
         return agent_rewards
