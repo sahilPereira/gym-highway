@@ -70,6 +70,10 @@ def get_fgs(update_type, current_step, max_steps):
                 alpha = alpha_vals[i]
                 break
         return alpha
+    elif update_type == 'sig':
+        p_complete = float(current_step/max_steps)
+        exponential = np.exp(-15*(p_complete - 0.5))
+        return 1.0 / (1.0 + exponential)
     return None
 
 # Modified for single agent runs for the particle environments
