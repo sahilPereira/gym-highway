@@ -51,6 +51,27 @@ def get_noise(noise_type, nb_actions):
                 raise RuntimeError('unknown noise type "{}"'.format(current_noise_type))
     return action_noise, param_noise
 
+def get_fgs(update_type, current_step, max_steps):
+    if update_type == 'linear':
+        return min(float(current_step/max_steps), 1.0)
+    elif update_type == 'exp':
+        p_complete = float(current_step/max_steps)
+        y = 1.0 - 1.0/max(p_complete**2,1e-4)
+        return min(np.exp(y), 1.0)
+    elif update_type == 'log':
+        p_complete = float(current_step/max_steps)
+        return 1 - np.exp(-1.5*p_complete)
+    elif update_type == 'step':
+        alpha_vals = [0.0, 0.25, 0.5, 0.75, 1.0]
+        interval = max_steps/len(alpha_vals)
+        alpha = 1.0
+        for i in range(len(alpha_vals)):
+            if current_step <= interval*(i+1):
+                alpha = alpha_vals[i]
+                break
+        return alpha
+    return None
+
 # Modified for single agent runs for the particle environments
 def learn(network, env,
           seed=None,
@@ -81,6 +102,8 @@ def learn(network, env,
           save_interval=100,
           load_path=None,
           num_adversaries=0,
+          fgs_updateType = None,
+          fgs_step_bound = None,
           adv_policy='maddpg',
           good_policy='maddpg',
           **network_kwargs):
@@ -103,6 +126,7 @@ def learn(network, env,
     else:
         rank = 0
 
+    fgs_step_bound = fgs_step_bound if fgs_step_bound else total_timesteps
     # NOTE: This is mainly for debugging
     obs_shape_n = [env.observation_space[i].shape for i in range(num_agents)]
     print("Num of observations: {}".format(len(obs_shape_n)))
@@ -267,6 +291,10 @@ def learn(network, env,
             epoch_episodes += 1
             episodes += 1
 
+            # calculate new follower gradient scaling value
+            new_fgs_val = get_fgs(fgs_updateType, t, fgs_step_bound)
+            new_fgs_val = new_fgs_val if new_fgs_val is not None else follower_grad_scale
+
             # Train.
             epoch_actor_losses = [[] for _ in range(num_agents)]
             epoch_critic_losses = [[] for _ in range(num_agents)]
@@ -279,7 +307,7 @@ def learn(network, env,
                         distance = agent.adapt_param_noise(trainers)
                         epoch_adaptive_distances[i].append(distance)
 
-                    cl, al = agent.train(trainers)
+                    cl, al = agent.train(trainers, new_fgs_val)
                     epoch_critic_losses[i].append(cl)
                     epoch_actor_losses[i].append(al)
                     agent.update_target_net()
@@ -317,7 +345,7 @@ def learn(network, env,
         combined_stats = {}
         # get stats for all agents
         for i, agent in enumerate(trainers):
-            stats = agent.get_stats(trainers)
+            stats = agent.get_stats(trainers, new_fgs_val)
             for k,v in stats.items():
                 combined_stats["{}st/ag{}_{}".format(Config.tensorboard_rootdir,i,k)] = v
 

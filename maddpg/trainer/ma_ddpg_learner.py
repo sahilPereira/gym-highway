@@ -119,6 +119,8 @@ class MADDPG(object):
         self.critic_target = tf.placeholder(tf.float32, shape=(None, 1), name='critic_target')
         self.param_noise_stddev = tf.placeholder(tf.float32, shape=(), name='param_noise_stddev')
 
+        self.follower_grad_scale = tf.placeholder(dtype=tf.float32, shape=(), name="fgs")
+
         # Parameters.
         self.gamma = gamma
         self.tau = tau
@@ -142,7 +144,7 @@ class MADDPG(object):
         self.critic_l2_reg = critic_l2_reg
         self.followers = followers
         self.num_followers_scaling = 1.0/len(followers) if followers else 0.0
-        self.follower_grad_scale = follower_grad_scale
+        # self.fgs_val = follower_grad_scale
 
         # Observation normalization.
         # TODO: need to update the replay buffer storage function to account for multiple agents
@@ -311,7 +313,7 @@ class MADDPG(object):
         self.actor_follower_grads = U.flatgrad(self.actor_follower_loss, self.actor.trainable_vars, clip_norm=self.clip_norm)
         # Update: scale the follower gradient contribution based on number of followers
         num_followers_scaling_var = tf.Variable(self.num_followers_scaling, tf.float32, name='num_followers_agent_%d' % self.agent_index)
-        follower_grad_scale_var = tf.Variable(self.follower_grad_scale, tf.float32)
+        # self.follower_grad_scale_var = tf.Variable(self.follower_grad_scale, tf.float32)
 
 
         # print("self.actor_follower_grads shape: ", self.actor_follower_grads.shape)
@@ -322,7 +324,7 @@ class MADDPG(object):
         # actor_follower_grads_final = tf.divide(actor_follower_grads_norm, actor_follower_grads_l2norm)
 
         # Scale follower gradients by follower scaling factor
-        self.scaled_actor_follower_grads = tf.scalar_mul(follower_grad_scale_var, actor_follower_grads_l2norm)
+        self.scaled_actor_follower_grads = tf.scalar_mul(self.follower_grad_scale, actor_follower_grads_l2norm)
         self.actor_grads = tf.add(self.actor_primary_grads, self.scaled_actor_follower_grads)
 
         self.actor_optimizer = MpiAdam(var_list=self.actor.trainable_vars,
@@ -379,6 +381,9 @@ class MADDPG(object):
         if self.normalize_observations:
             ops += [tf.reduce_mean(self.obs_rms.mean), tf.reduce_mean(self.obs_rms.std)]
             names += ['obs_rms_mean', 'obs_rms_std']
+
+        ops += [self.follower_grad_scale]
+        names += ['follower_grad_scale']
 
         ops += [tf.reduce_mean(self.critic_tf)]
         names += ['reference_Q_mean']
@@ -466,7 +471,7 @@ class MADDPG(object):
             self.obs_rms.update(np.array([obs0[b]]))
         return
 
-    def train(self, agents):
+    def train(self, agents, fgs):
         # generate indices to access batches from all agents
         replay_sample_index = self.memory.generate_index(self.batch_size)
 
@@ -561,6 +566,7 @@ class MADDPG(object):
         # feed_dict = obs0_n_dict
         feed_dict.update(act_dict)
         feed_dict.update({self.critic_target: target_Q})
+        feed_dict.update({self.follower_grad_scale: fgs})
 
         actor_grads, actor_loss, critic_grads, critic_loss = self.sess.run(ops, feed_dict=feed_dict)
 
@@ -587,7 +593,10 @@ class MADDPG(object):
     def update_follower_net(self):
         self.sess.run(self.follower_soft_updates)
 
-    def get_stats(self, agents):
+    def update_fgs(self, new_fgs):
+        self.sess.run(self.follower_grad_scale_var.assign(new_fgs))
+
+    def get_stats(self, agents, fgs):
         if self.stats_sample is None:
             replay_sample_index = self.memory.generate_index(self.batch_size)
             # collect replay sample from all agents
@@ -606,6 +615,7 @@ class MADDPG(object):
             # Get a sample and keep that fixed for all further computations.
             # This allows us to estimate the change in value for the same set of inputs.
             self.stats_sample = feed_dict
+        self.stats_sample.update({self.follower_grad_scale: fgs})
         values = self.sess.run(self.stats_ops, feed_dict=self.stats_sample)
 
         names = self.stats_names[:]
