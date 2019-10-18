@@ -400,6 +400,31 @@ class MADDPG(object):
         ops += [reduce_std(self.actor_tf)]
         names += ['reference_action_std']
 
+        # More metrics for paper:
+        # actor primary loss and follower loss
+        ops += [self.actor_primary_loss]
+        names += ['actor_primary_loss']
+        ops += [self.actor_follower_loss]
+        names += ['actor_follower_loss']
+
+        # actor primary grad mean and std
+        ops += [tf.reduce_mean(self.actor_primary_grads)]
+        names += ['actor_primary_grads_mean']
+        ops += [reduce_std(self.actor_primary_grads)]
+        names += ['actor_primary_grads_std']
+
+        # actor follower grad mean and std
+        ops += [tf.reduce_mean(self.actor_follower_grads)]
+        names += ['actor_follower_grads_mean']
+        ops += [reduce_std(self.actor_follower_grads)]
+        names += ['actor_follower_grads_std']
+
+        # actor scaled follower grad mean and std
+        ops += [tf.reduce_mean(self.scaled_actor_follower_grads)]
+        names += ['scaled_actor_follower_grads_mean']
+        ops += [reduce_std(self.scaled_actor_follower_grads)]
+        names += ['scaled_actor_follower_grads_std']
+
         if self.param_noise:
             ops += [tf.reduce_mean(self.perturbed_actor_tf)]
             names += ['reference_perturbed_action_mean']
