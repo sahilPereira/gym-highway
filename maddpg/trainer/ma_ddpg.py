@@ -87,7 +87,7 @@ def learn(network, env,
     set_global_seeds(seed)
 
     continuous_ctrl = not isinstance(env.action_space[0], spaces.Discrete)
-    # assert continuous_ctrl
+    assert continuous_ctrl
     
     nb_actions = env.action_space[0].shape[-1] if continuous_ctrl else env.action_space[0].n
     
@@ -128,8 +128,6 @@ def learn(network, env,
         # TODO: remove after testing
         assert param_noise is not None
 
-        # TODO: need to update the placeholders in MADDPG based off of ddpg_learner
-        # replay buffer, actor and critic are defined for each agent in trainers
         agent = MADDPG("agent_%d" % i, actor, critic, memory, env.observation_space, env.action_space, i, obs_rms,
             gamma=gamma, tau=tau, normalize_returns=normalize_returns, normalize_observations=normalize_observations,
             batch_size=batch_size, action_noise=action_noise, param_noise=param_noise, critic_l2_reg=critic_l2_reg,
@@ -194,24 +192,7 @@ def learn(network, env,
     print('Starting iterations...')
     for epoch in range(nb_epochs):
         for cycle in range(nb_epoch_cycles):
-            
             obs_n = env.reset()
-            
-            # Episode done.
-            epoch_episode_rewards += episode_reward
-            # keep track of individual agent reward history
-            for i in range(num_agents):
-                episode_agent_rewards_history[i].append(episode_reward[i])
-            # track combined reward history of all agents
-            episode_rewards_history.append(sum(episode_reward))
-            # episode steps over all runs
-            epoch_episode_steps += episode_step
-            # episode steps for last 100 runs
-            episode_steps_history.append(episode_step)
-            # reset list for next run
-            episode_reward = np.zeros(len(trainers), dtype = np.float32)
-            episode_step = 0
-
             if nenvs == 1:
                 for agent in trainers:
                     agent.reset()
@@ -231,10 +212,6 @@ def learn(network, env,
                 actions_n = [agent.step(obs, apply_noise=True, compute_Q=False)[0] for agent, obs in zip(trainers, rep_obs)]
                 
                 # confirm actions_n is nenvs x num_agents x len(Action)
-                # print("actions_n: ", actions_n)
-                # print("actions_n: ", actions_n[0][1])
-                # print((len(actions_n),len(actions_n[0]),len(actions_n[0][0])))
-                # print((nenvs, num_agents, nb_actions))
                 # assert (len(actions_n),len(actions_n[0]),len(actions_n[0][0])) == (nenvs, num_agents, nb_actions)
 
                 # environment step
@@ -249,12 +226,27 @@ def learn(network, env,
                     agent.store_transition(obs_n, actions_n, rew_n, new_obs_n, done_n)
                 obs_n = new_obs_n
 
-                # time.sleep(0.1)
-                # env.render()
+                if render:
+                    time.sleep(0.1)
+                    env.render()
                 
                 # update timestep
                 t += 1
-            
+
+            # Episode done.
+            epoch_episode_rewards += episode_reward
+            # keep track of individual agent reward history
+            for i in range(num_agents):
+                episode_agent_rewards_history[i].append(episode_reward[i])
+            # track combined reward history of all agents
+            episode_rewards_history.append(sum(episode_reward))
+            # episode steps over all runs
+            epoch_episode_steps += episode_step
+            # episode steps for last 100 runs
+            episode_steps_history.append(episode_step)
+            # reset list for next run
+            episode_reward = np.zeros(len(trainers), dtype = np.float32)
+            episode_step = np.zeros(nenvs, dtype = int)
             # increment counters
             epoch_episodes += 1
             episodes += 1

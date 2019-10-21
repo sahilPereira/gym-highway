@@ -1,6 +1,6 @@
 import numpy as np
-from multiagent.core import World, Agent, Landmark
-from multiagent.scenario import BaseScenario
+from gym_highway.multiagent_envs.multiagent.core import World, Agent, Landmark
+from gym_highway.multiagent_envs.multiagent.scenario import BaseScenario
 
 
 class Scenario(BaseScenario):
@@ -33,6 +33,7 @@ class Scenario(BaseScenario):
             landmark.boundary = False
         # make initial conditions
         self.reset_world(world)
+        self.shape_reward = True
         return world
 
 
@@ -89,9 +90,8 @@ class Scenario(BaseScenario):
     def agent_reward(self, agent, world):
         # Agents are negatively rewarded if caught by adversaries
         rew = 0
-        shape = False
         adversaries = self.adversaries(world)
-        if shape:  # reward can optionally be shaped (increased reward for increased distance from adversary)
+        if self.shape_reward:  # reward can optionally be shaped (increased reward for increased distance from adversary)
             for adv in adversaries:
                 rew += 0.1 * np.sqrt(np.sum(np.square(agent.state.p_pos - adv.state.p_pos)))
         if agent.collide:
@@ -115,10 +115,9 @@ class Scenario(BaseScenario):
     def adversary_reward(self, agent, world):
         # Adversaries are rewarded for collisions with agents
         rew = 0
-        shape = False
         agents = self.good_agents(world)
         adversaries = self.adversaries(world)
-        if shape:  # reward can optionally be shaped (decreased reward for increased distance from agents)
+        if self.shape_reward:  # reward can optionally be shaped (decreased reward for increased distance from agents)
             for adv in adversaries:
                 rew -= 0.1 * min([np.sqrt(np.sum(np.square(a.state.p_pos - adv.state.p_pos))) for a in agents])
         if agent.collide:
@@ -144,4 +143,6 @@ class Scenario(BaseScenario):
             other_pos.append(other.state.p_pos - agent.state.p_pos)
             if not other.adversary:
                 other_vel.append(other.state.p_vel)
+            else:
+                other_vel.append(np.zeros(world.dim_p))
         return np.concatenate([agent.state.p_vel] + [agent.state.p_pos] + entity_pos + other_pos + other_vel)
