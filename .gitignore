@@ -4,6 +4,7 @@
 .idea
 /logs
 gymenv/*
+jupyter/*
 .vscode/*
 */.vscode/*
 */.gitignore
