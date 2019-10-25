@@ -4,6 +4,7 @@
 .idea
 *.npy
 *.sh
+*.pdf
 /logs
 gymenv/*
 jupyter/*

@@ -83,17 +83,25 @@ def plotData(fig, coordinate, data, axisLabels, title, avg=False, color='b', lab
 
 if __name__ == '__main__':
     # baseline_root_path = '/home/s6pereir/multirun_results/general_stkl_v2_results/August_2019/' 
-    baseline_root_path = '/home/s6pereir/multirun_results/seminar_runs/'
+
+    # Location for extra metric information54
+    # C:\Users\Sahil\Documents\1B_MASc\DBL\multirun_results\maddpg_particle_tag_stkl_v3_128_fgs100_Extra_Metrics_17_19-09_gzez
+
+
+    # baseline_root_path = '/home/s6pereir/multirun_results/seminar_runs/'
+    baseline_root_path = 'C:/Users/Sahil/Documents/1B_MASc/DBL/multirun_results/'
     scenario_dirs = [
-                     ['variable_fgs/September_2019/maddpg_particle_tag_stkl_v3_fgs_sig_r1_25_15-36_5632',
-                      'variable_fgs/September_2019/maddpg_particle_tag_stkl_v3_fgs_sig_r2_30_17-13_85zx',
-                      'variable_fgs/September_2019/maddpg_particle_tag_stkl_v3_fgs_sig_r4_30_17-13_cmjd'],
-                     ['baseline_results/September_2019/maddpg_particle_env_tag_128_r2_30_22-49_k3bq',
-                      'baseline_results/September_2019/maddpg_particle_env_tag_128_r3_30_22-48_134o',
-                      'baseline_results/September_2019/maddpg_particle_env_tag_128_r5_30_22-49_e899'],
-                     ['orig_comm/September_2019/maddpg_particle_tag_baseComm_128_r1_18_22-03_vfb5',
-                      'orig_comm/September_2019/maddpg_particle_tag_baseComm_128_r3_18_22-07_zfo4',
-                      'orig_comm/September_2019/maddpg_particle_tag_baseComm_128_r4_18_22-11_sw5b']]
+                     ['maddpg_particle_tag_stkl_v3_128_fgs100_Extra_Metrics_17_19-09_gzez']
+                    ]
+                    #  ['variable_fgs/September_2019/maddpg_particle_tag_stkl_v3_fgs_sig_r1_25_15-36_5632',
+                    #   'variable_fgs/September_2019/maddpg_particle_tag_stkl_v3_fgs_sig_r2_30_17-13_85zx',
+                    #   'variable_fgs/September_2019/maddpg_particle_tag_stkl_v3_fgs_sig_r4_30_17-13_cmjd'],
+                    #  ['baseline_results/September_2019/maddpg_particle_env_tag_128_r2_30_22-49_k3bq',
+                    #   'baseline_results/September_2019/maddpg_particle_env_tag_128_r3_30_22-48_134o',
+                    #   'baseline_results/September_2019/maddpg_particle_env_tag_128_r5_30_22-49_e899'],
+                    #  ['orig_comm/September_2019/maddpg_particle_tag_baseComm_128_r1_18_22-03_vfb5',
+                    #   'orig_comm/September_2019/maddpg_particle_tag_baseComm_128_r3_18_22-07_zfo4',
+                    #   'orig_comm/September_2019/maddpg_particle_tag_baseComm_128_r4_18_22-11_sw5b']]
                     #  ['variable_fgs/September_2019/maddpg_particle_tag_stkl_v3_fgs_sig_r1_25_15-36_5632',
                     #   'variable_fgs/September_2019/maddpg_particle_tag_stkl_v3_fgs_sig_r2_30_17-13_85zx',
                     #   'variable_fgs/September_2019/maddpg_particle_tag_stkl_v3_fgs_sig_r4_30_17-13_cmjd'],
@@ -108,7 +116,11 @@ if __name__ == '__main__':
                     # 'stkl_v3/September_2019/maddpg_particle_tag_stkl_v3_128_fgs075_r3_25_20-11_h6pe'
                     # 'orig_comm/September_2019/maddpg_particle_tag_baseComm_128_r2_18_22-06_7h5f', 
                     # 'orig_comm/September_2019/maddpg_particle_tag_baseComm_128_r5_18_22-13_dbt4'
-    plot_list = ['gym_highway/tb/ro/ag3_return_history','gym_highway/tb/ro/ag0_return_history']
+    # plot_list = ['gym_highway/tb/ro/ag3_return_history','gym_highway/tb/ro/ag0_return_history']
+    plot_list = ['gym_highway/tb/st/ag3_actor_follower_grads_mean','gym_highway/tb/st/ag3_actor_primary_grads_mean',
+                 'gym_highway/tb/st/ag3_scaled_actor_follower_grads_mean', 'gym_highway/tb/st/ag3_actor_primary_loss', 
+                 'gym_highway/tb/st/ag3_actor_follower_loss']
+
     # plot_list = ['gym_highway/tb/ro/ag3_return_history','gym_highway/tb/ro/ag0_return_history']
     # plot_labels = ['baseComm_avg', 'standard_avg']
     # plot_labels = ['exp', 'linear', 'log', 'sig', 'step']
@@ -117,11 +129,13 @@ if __name__ == '__main__':
     # plot_labels = ['r1','r2','r3','r4','r5']
     # plot_labels = ['Agent 0','Adversary 1','Adversary 2']
     # plot_labels = ['Leader','Follower','Follower']
-    plot_labels = ['SMARL','MADDPG','MADDPG + Comm']
+    # plot_labels = ['SMARL','MADDPG','MADDPG + Comm']
+    plot_labels = ['follower_grad','primary_grad','scaled_follower_grad', 'primary_loss', 'follower_loss']
     # plot_labels = ['r1_000','r2_000','r3_000','r1_100','r2_100','r3_100']
     # plot_labels = ['Prey','Predators', 'Predator 2', 'Predator 3']
     agents = []
     avg = True
+    scalar_avg = True
     plot_title = None
     x_label = "Episodes"
     # y_label = ["Leader avg. reward", "Follower 1 avg. reward", "Follower 2 avg. reward"]
@@ -158,6 +172,7 @@ if __name__ == '__main__':
     # plt.title(plot_title)
     # plt.ylabel(y_label)
     # plt.xlabel(x_label)
+    metric_dict = {}
 
     colors = plt.rcParams['axes.prop_cycle'].by_key()['color']
     index = 0
@@ -169,6 +184,13 @@ if __name__ == '__main__':
             scenarios = scenario_fullpaths[i]
             scenarios = [(s, plot_item) for s in scenarios]
             all_vals = pool.map(worker, scenarios)
+
+            if scalar_avg:
+                metric_avg_val = np.mean(all_vals)
+                metric_dict[plot_labels[p]] = metric_avg_val
+                print("{} : {}".format(plot_labels[p], metric_avg_val))
+                continue
+
             # scenarios_args = [(vals, smooth_factor) for vals in all_vals]
             # smooth_vals = pool.map(smooth_mpc, scenarios_args)
             smooth_vals = [smooth(vals, smooth_factor) for vals in all_vals]
@@ -183,6 +205,18 @@ if __name__ == '__main__':
             # label = plot_labels[p] if avg else plot_labels
             # plotData(fig, coordinate+index, smooth_vals, [x_label, y_label[p]], plot_title, avg=avg, color=colors[p], labels=label, legend=True, savefile=save_file)
         index = min(index+1, len(plot_list)-1)
+
+    v1, v2 = metric_dict[plot_labels[0]], metric_dict[plot_labels[1]]
+    p_diff = abs(v1 - v2)/np.mean([v1,v2])
+    print("percent diff {}:{} = {}".format(plot_labels[0], plot_labels[1], p_diff))
+
+    v1, v2 = metric_dict[plot_labels[0]], metric_dict[plot_labels[2]]
+    p_diff = abs(v1 - v2)/np.mean([v1,v2])
+    print("percent diff {}:{} = {}".format(plot_labels[0], plot_labels[2], p_diff))
+
+    v1, v2 = metric_dict[plot_labels[3]], metric_dict[plot_labels[4]]
+    p_diff = abs(v1 - v2)/np.mean([v1,v2])
+    print("percent diff {}:{} = {}".format(plot_labels[3], plot_labels[4], p_diff))
 
     print("Processing time: ", time.time()-start_time)
 
